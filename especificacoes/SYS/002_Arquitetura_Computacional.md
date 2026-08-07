@@ -6,7 +6,7 @@
 | **Título**        | Arquitetura Computacional |
 | **Versão**        | 1.0                       |
 | **Estado**        | Em Desenvolvimento        |
-| **Autor**         | Projeto Aerus             |
+| **Autor**         | ShegaPT                   |
 | **Classificação** | Especificação de Sistema  |
 
 ---
