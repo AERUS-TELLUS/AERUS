@@ -415,21 +415,21 @@ Esses elementos são definidos nas respetivas especificações.
 
 # 23. Referências
 
-SYS-002 — Arquitetura_Computacional
-SYS-004 — Arquitetura_Hardware
-SYS-005 — Fluxo_Global_de_Informacao
-SYS-006 — Gestao_de_Estados
-SYS-007 — Modos_de_Funcionamento
-SYS-008 — Gestao_Temporal
-HW-002 — Grupos_Computacionais
-HW-003 — Distribuicao_de_Hardware
-HW-004 — Interfaces_Eletricas
-HW-005 — Alimentacao_e_Distribuicao_de_Energia
-HW-006 — Interfaces_de_Comunicacao
-HW-007 — Interfaces_de_Perifericos
-HW-008 — Redundancia_e_Isolamento_de_Hardware
-HW-009 — Expansibilidade_e_Configuracao_de_Hardware
-COM — Especificações de Comunicações
-SEN — Especificações de Sensores
-ACT — Especificações de Atuadores
-SEC — Especificações de Segurança
+- SYS-002 — Arquitetura_Computacional
+- SYS-004 — Arquitetura_Hardware
+- SYS-005 — Fluxo_Global_de_Informacao
+- SYS-006 — Gestao_de_Estados
+- SYS-007 — Modos_de_Funcionamento
+- SYS-008 — Gestao_Temporal
+- HW-002 — Grupos_Computacionais
+- HW-003 — Distribuicao_de_Hardware
+- HW-004 — Interfaces_Eletricas
+- HW-005 — Alimentacao_e_Distribuicao_de_Energia
+- HW-006 — Interfaces_de_Comunicacao
+- HW-007 — Interfaces_de_Perifericos
+- HW-008 — Redundancia_e_Isolamento_de_Hardware
+- HW-009 — Expansibilidade_e_Configuracao_de_Hardware
+- COM — Especificações de Comunicações
+- SEN — Especificações de Sensores
+- ACT — Especificações de Atuadores
+- SEC — Especificações de Segurança

@@ -251,12 +251,12 @@ Estas evoluções não deverão alterar significativamente os princípios gerais
 
 # 15. Referências
 
-SYS-002 — Arquitetura Computacional
-SYS-003 — Arquitetura Software
-SYS-004 — Arquitetura Hardware
-SYS-006 — Gestão de Estados
-COM — Especificações de Comunicações
-SEC — Especificações de Segurança
-SEN — Especificações de Sensores
-ACT — Especificações de Atuadores
-MAT — Especificações Matemáticas
+- SYS-002 — Arquitetura Computacional
+- SYS-003 — Arquitetura Software
+- SYS-004 — Arquitetura Hardware
+- SYS-006 — Gestão de Estados
+- COM — Especificações de Comunicações
+- SEC — Especificações de Segurança
+- SEN — Especificações de Sensores
+- ACT — Especificações de Atuadores
+- MAT — Especificações Matemáticas

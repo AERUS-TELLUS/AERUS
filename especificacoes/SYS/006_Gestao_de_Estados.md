@@ -212,10 +212,10 @@ Estas evoluções não deverão comprometer os princípios definidos na presente
 
 # 14. Referências
 
-SYS-002 — Arquitetura Computacional
-SYS-003 — Arquitetura Software
-SYS-005 — Fluxo Global de Informação
-SYS-007 — Modos de Funcionamento
-COM — Especificações de Comunicações
-SEC — Especificações de Segurança
-SW — Especificações de Software
+- SYS-002 — Arquitetura Computacional
+- SYS-003 — Arquitetura Software
+- SYS-005 — Fluxo Global de Informação
+- SYS-007 — Modos de Funcionamento
+- COM — Especificações de Comunicações
+- SEC — Especificações de Segurança
+- SW — Especificações de Software

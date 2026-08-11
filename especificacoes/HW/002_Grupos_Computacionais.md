@@ -509,18 +509,18 @@ Esses elementos serão definidos nas respetivas especificações.
 
 # 20. Referências
 
-HW-001 — Arquitetura_de_Hardware
-HW-003 — Distribuicao_de_Hardware
-HW-004 — Interfaces_Eletricas
-HW-005 — Alimentacao_e_Distribuicao_de_Energia
-HW-006 — Interfaces_de_Comunicacao
-HW-007 — Interfaces_de_Perifericos
-HW-008 — Redundancia_e_Isolamento_de_Hardware
-HW-009 — Expansibilidade_e_Configuracao_de_Hardware
-SYS-002 — Arquitetura_Computacional
-SYS-005 — Fluxo_Global_de_Informacao
-SYS-006 — Gestao_de_Estados
-SYS-007 — Modos_de_Funcionamento
-MAT — Especificações Matemáticas
-COM — Especificações de Comunicações
-SEC — Especificações de Segurança
+- HW-001 — Arquitetura_de_Hardware
+- HW-003 — Distribuicao_de_Hardware
+- HW-004 — Interfaces_Eletricas
+- HW-005 — Alimentacao_e_Distribuicao_de_Energia
+- HW-006 — Interfaces_de_Comunicacao
+- HW-007 — Interfaces_de_Perifericos
+- HW-008 — Redundancia_e_Isolamento_de_Hardware
+- HW-009 — Expansibilidade_e_Configuracao_de_Hardware
+- SYS-002 — Arquitetura_Computacional
+- SYS-005 — Fluxo_Global_de_Informacao
+- SYS-006 — Gestao_de_Estados
+- SYS-007 — Modos_de_Funcionamento
+- MAT — Especificações Matemáticas
+- COM — Especificações de Comunicações
+- SEC — Especificações de Segurança

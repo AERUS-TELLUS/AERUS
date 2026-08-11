@@ -433,13 +433,13 @@ A separação exata das responsabilidades é definida pelos procedimentos operac
 
 # 26. Referências
 
-SYS-006 — Gestao_de_Estados
-SYS-007 — Modos_de_Funcionamento
-SYS-008 — Gestao_Temporal
-OPS — Especificações Operacionais
-SEN — Especificações de Sensores
-ACT — Especificações de Atuadores
-NAV — Especificações de Navegação
-CTL — Especificações de Controlo
-SEC — Especificações de Segurança
-ENE — Especificações Energéticas
+- SYS-006 — Gestao_de_Estados
+- SYS-007 — Modos_de_Funcionamento
+- SYS-008 — Gestao_Temporal
+- OPS — Especificações Operacionais
+- SEN — Especificações de Sensores
+- ACT — Especificações de Atuadores
+- NAV — Especificações de Navegação
+- CTL — Especificações de Controlo
+- SEC — Especificações de Segurança
+- ENE — Especificações Energéticas

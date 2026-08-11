@@ -183,12 +183,12 @@ Alterações ao hardware utilizado por um grupo computacional não deverão obri
 
 # 15. Referências
 
-SYS-001 — Visão Geral do Sistema
-SYS-002 — Arquitetura Computacional
-SYS-003 — Arquitetura Software
-SYS-005 — Fluxo Global de Informação
-HW — Especificações de Hardware
-COM — Especificações de Comunicações
-SEC — Especificações de Segurança
-ACT — Especificações de Atuadores
-SEN — Especificações de Sensores
+- SYS-001 — Visão Geral do Sistema
+- SYS-002 — Arquitetura Computacional
+- SYS-003 — Arquitetura Software
+- SYS-005 — Fluxo Global de Informação
+- HW — Especificações de Hardware
+- COM — Especificações de Comunicações
+- SEC — Especificações de Segurança
+- ACT — Especificações de Atuadores
+- SEN — Especificações de Sensores

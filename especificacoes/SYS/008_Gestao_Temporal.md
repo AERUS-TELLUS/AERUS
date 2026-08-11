@@ -350,13 +350,13 @@ A arquitetura temporal deverá permitir a introdução futura de novos grupos co
 
 # 23. Referências
 
-SYS-002 — Arquitetura_Computacional
-SYS-005 — Fluxo_Global_de_Informacao
-SYS-006 — Gestao_de_Estados
-SYS-007 — Modos_de_Funcionamento
-SYS-009 — Arranque_e_Encerramento
-SW — Especificações de Software
-COM — Especificações de Comunicações
-SEN — Especificações de Sensores
-ACT — Especificações de Atuadores
-SEC — Especificações de Segurança
+- SYS-002 — Arquitetura_Computacional
+- SYS-005 — Fluxo_Global_de_Informacao
+- SYS-006 — Gestao_de_Estados
+- SYS-007 — Modos_de_Funcionamento
+- SYS-009 — Arranque_e_Encerramento
+- SW — Especificações de Software
+- COM — Especificações de Comunicações
+- SEN — Especificações de Sensores
+- ACT — Especificações de Atuadores
+- SEC — Especificações de Segurança

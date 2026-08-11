@@ -216,10 +216,10 @@ sem necessidade de reformular significativamente o restante sistema.
 
 # 16. Referências
 
-SYS-001 — Visão Geral do Sistema
-SYS-002 — Arquitetura Computacional
-SYS-004 — Arquitetura Hardware
-SYS-005 — Fluxo Global de Informação
-SW — Especificações de Software
-MAT — Especificações Matemáticas
-COM — Especificações de Comunicações
+- SYS-001 — Visão Geral do Sistema
+- SYS-002 — Arquitetura Computacional
+- SYS-004 — Arquitetura Hardware
+- SYS-005 — Fluxo Global de Informação
+- SW — Especificações de Software
+- MAT — Especificações Matemáticas
+- COM — Especificações de Comunicações

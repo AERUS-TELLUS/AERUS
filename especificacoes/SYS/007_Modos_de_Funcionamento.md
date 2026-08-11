@@ -155,9 +155,9 @@ A adição, remoção ou alteração de modos não deverá comprometer a estrutu
 
 # 13. Referências
 
-SYS-006 — Gestao_de_Estados
-SYS-008 — Gestao_Temporal
-OPS — Procedimentos Operacionais
-SW — Especificações de Software
-COM — Especificações de Comunicações
-SEC — Especificações de Segurança
+- SYS-006 — Gestao_de_Estados
+- SYS-008 — Gestao_Temporal
+- OPS — Procedimentos Operacionais
+- SW — Especificações de Software
+- COM — Especificações de Comunicações
+- SEC — Especificações de Segurança

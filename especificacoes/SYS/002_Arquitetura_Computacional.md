@@ -241,12 +241,8 @@ Esta abordagem permite adaptar o sistema a aeronaves de diferentes dimensões e 
 
 # 14. Referências
 
-SYS-001 — Visão Geral do Sistema
-
-HW — Especificações de Hardware
-
-SW — Especificações de Software
-
-COM — Especificações de Comunicações
-
-SEC — Especificações de Segurança
+- SYS-001 — Visão Geral do Sistema
+- HW — Especificações de Hardware
+- SW — Especificações de Software
+- COM — Especificações de Comunicações
+- SEC — Especificações de Segurança
