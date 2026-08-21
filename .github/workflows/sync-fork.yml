@@ -1,4 +1,4 @@
-name: Sync to Organization
+name: Sync to Organization via SSH
 
 on:
   push:
@@ -9,25 +9,25 @@ jobs:
   sync:
     runs-on: ubuntu-latest
     steps:
-      # PASSO 1: Checkout com token explícito
-      - name: Checkout repository
-        uses: actions/checkout@v4  # ← ATUALIZEI PARA V4
+      - name: Checkout
+        uses: actions/checkout@v4
         with:
           fetch-depth: 0
-          token: ${{ secrets.ORG_TOKEN }}
       
-      # PASSO 2: Configurar Git com suas credenciais
+      - name: Setup SSH
+        run: |
+          mkdir -p ~/.ssh
+          echo "${{ secrets.ORG_SSH_KEY }}" > ~/.ssh/id_ed25519
+          chmod 600 ~/.ssh/id_ed25519
+          ssh-keyscan github.com >> ~/.ssh/known_hosts
+      
       - name: Configure Git
         run: |
           git config --global user.name "Shega-PT"
           git config --global user.email "seu-email@exemplo.com"
-          git config --global http.postBuffer 524288000
       
-      # PASSO 3: Sincronizar para organização
-      - name: Push to Organization
+      - name: Push via SSH
         run: |
-          git remote add org https://Shega-PT:${{ secrets.ORG_TOKEN }}@github.com/AERUS-TELLUS/AERUS.git
-          git push org --all --force --verbose
-          git push org --tags --force --verbose
-        env:
-          GITHUB_TOKEN: ${{ secrets.ORG_TOKEN }}
+          git remote add org git@github.com:AERUS-TELLUS/AERUS.git
+          git push org --all --force
+          git push org --tags --force
