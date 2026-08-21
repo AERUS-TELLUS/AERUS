@@ -1,21 +1,24 @@
-# .github/workflows/sync-fork.yml
-name: Sync Fork with Organization
+name: Sync to Organization
 
 on:
   push:
-    branches: [ main, master ]
-  schedule:
-    - cron: '0 0 * * *'  # Sincroniza diariamente
+    branches: [ main ]  # ou 'master'
+  workflow_dispatch:    # permite execução manual
 
 jobs:
   sync:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v3
+      - name: Checkout code
+        uses: actions/checkout@v3
         with:
           fetch-depth: 0
+          token: ${{ secrets.ORG_TOKEN }}  # CRUCIAL!
       
-      - name: Push to Organization Fork
+      - name: Sync to Organization
         run: |
-          git remote add org https://x-access-token:${{ secrets.ORG_TOKEN }}@github.com/AERUS-TELLUS/AERUS.git
-          git push org main --force
+          git remote add org https://Shega-PT:${{ secrets.ORG_TOKEN }}@github.com/AERUS-TELLUS/AERUS.git
+          git push org --all --force
+          git push org --tags --force
+        env:
+          GITHUB_TOKEN: ${{ secrets.ORG_TOKEN }}
