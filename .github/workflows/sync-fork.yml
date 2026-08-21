@@ -2,7 +2,7 @@ name: Sync to Organization
 
 on:
   push:
-    branches: [ main ]  # ou 'master'
+    branches: [ main ]  # ou 'master', se for o caso
   workflow_dispatch:    # permite execução manual
 
 jobs:
@@ -13,7 +13,7 @@ jobs:
         uses: actions/checkout@v3
         with:
           fetch-depth: 0
-          token: ${{ secrets.ORG_TOKEN }}  # CRUCIAL!
+          token: ${{ secrets.ORG_TOKEN }}  # <-- LINHA CRUCIAL ADICIONADA
       
       - name: Sync to Organization
         run: |
