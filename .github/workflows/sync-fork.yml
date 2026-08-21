@@ -1,0 +1,21 @@
+# .github/workflows/sync-fork.yml
+name: Sync Fork with Organization
+
+on:
+  push:
+    branches: [ main, master ]
+  schedule:
+    - cron: '0 0 * * *'  # Sincroniza diariamente
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+        with:
+          fetch-depth: 0
+      
+      - name: Push to Organization Fork
+        run: |
+          git remote add org https://x-access-token:${{ secrets.ORG_TOKEN }}@github.com/AERUS-TELLUS/AERUS.git
+          git push org main --force
