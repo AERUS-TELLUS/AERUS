@@ -1,2 +1,9 @@
+htmlcov/
+*.egg-info/
+*.egg
+build/
+dist/
+.venv/
+venv/
+.env
 math/
-
