@@ -399,7 +399,9 @@ A necessidade de uma via independente deverá ser determinada pela criticidade d
 
 O domínio de segurança deverá possuir as ligações necessárias para manter as suas funções mesmo perante determinadas falhas do sistema normal.
 
-A arquitetura física detalhada encontra-se em `HW-006`.
+A comunicação entre ESP32-FS e ESP32-FS_A utiliza um **bus CAN FD dedicado de segurança**, separado do bus operacional. O ESP32-FS está conectado a ambos os buses, permitindo avaliar a informação de ambos os domínios.
+
+A arquitetura física detalhada encontra-se em `HW-006` e `COM-008`.
 
 ---
 

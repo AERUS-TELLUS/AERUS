@@ -295,7 +295,7 @@ A distribuição concreta será definida em `HW-003`.
 
 Os grupos computacionais comunicam através de interfaces físicas dedicadas.
 
-A arquitetura atual utiliza UART como meio de comunicação entre os diferentes grupos computacionais.
+A arquitetura atual utiliza CAN FD como meio de comunicação entre os diferentes grupos computacionais.
 
 A comunicação lógica é estruturada através de um protocolo baseado em TLV.
 

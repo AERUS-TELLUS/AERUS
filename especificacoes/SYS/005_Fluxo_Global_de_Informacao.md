@@ -17,7 +17,7 @@ O presente documento define a forma como a informação circula entre os diferen
 
 São estabelecidos os princípios gerais do fluxo de informação, a distribuição dos dados entre os diferentes domínios computacionais e a separação entre fluxos de informação, fluxos de controlo e fluxos de autoridade.
 
-Os detalhes relativos aos protocolos de comunicação, formatos de mensagens e mecanismos de transporte encontram-se definidos nas respetivas especificações da área COM.
+Os detalhes relativos aos protocolos de comunicação, formatos de mensagens e mecanismos de transporte (CAN FD, TLV) encontram-se definidos nas respetivas especificações da área COM.
 
 ---
 

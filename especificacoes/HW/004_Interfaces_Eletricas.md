@@ -427,7 +427,7 @@ Este documento não define:
 * conectores específicos;
 * esquemas elétricos finais;
 * distribuição de alimentação;
-* topologia UART;
+* topologia CAN;
 * protocolo TLV.
 
 Esses elementos serão definidos nas respetivas especificações.

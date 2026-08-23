@@ -25,49 +25,68 @@ A definição detalhada do protocolo de comunicação pertence à especificaçã
 
 A comunicação entre diferentes elementos de hardware do Aerus deverá utilizar interfaces físicas adequadas à função e à arquitetura do sistema.
 
-Na arquitetura atualmente definida, a comunicação entre diferentes hardwares será realizada através de **UART**.
+Na arquitetura atualmente definida, a comunicação entre diferentes Grupos Computacionais será realizada através de **CAN FD** (Controller Area Network with Flexible Data-rate).
+
+A comunicação entre controladores e periféricos (sensores e atuadores) utiliza interfaces seriais dedicadas (**UART**, **SPI**, **I2C**), conforme as necessidades de cada periférico.
 
 Isto aplica-se tanto a:
 
-* comunicação entre ESP32 e RaspberryPi;
-* comunicação entre diferentes RaspberryPi;
-* comunicação entre diferentes elementos de outros Grupos Computacionais quando aplicável.
+* comunicação entre ESP32 e RaspberryPi (CAN FD);
+* comunicação entre diferentes RaspberryPi (CAN FD);
+* comunicação entre diferentes elementos de outros Grupos Computacionais (CAN FD);
+* comunicação entre controladores e sensores (UART/SPI/I2C);
+* comunicação entre controladores e atuadores (UART/SPI/I2C).
 
 ---
 
-# 3. UART
+# 3. CAN FD
 
-A UART constitui a interface física de comunicação entre diferentes domínios computacionais do Aerus.
+O CAN FD (Controller Area Network with Flexible Data-rate) constitui a interface física de comunicação entre diferentes domínios computacionais do Aerus.
 
-A utilização de UART deverá permitir comunicação:
+A utilização de CAN FD deverá permitir comunicação:
 
 * entre microcontroladores;
 * entre microcontroladores e RaspberryPi;
 * entre diferentes elementos RaspberryPi;
 * entre elementos pertencentes ao mesmo Grupo Computacional quando necessário.
 
-Os parâmetros elétricos e de configuração concretos de cada ligação serão definidos na configuração específica da aeronave.
+O CAN FD é utilizado em dois buses independentes:
+
+* **Bus operacional** — partilhado por todos os Grupos Computacionais;
+* **Bus de segurança** — dedicado à comunicação entre ESP32-FS e ESP32-FS_A.
+
+Os parâmetros elétricos, CAN IDs e configuração de cada ligação serão definidos na configuração específica da aeronave e documentados em `COM-008` e `shared/CAN_IDS`.
 
 ---
 
 # 4. Separação entre Interface e Protocolo
 
-A UART define o meio físico de transporte.
-
-O conteúdo transportado pela UART será organizado segundo o protocolo de comunicação do Aerus.
-
-De forma simplificada:
+A comunicação do Aerus é composta por três camadas independentes:
 
 ```text
 ┌───────────────────────────────┐
-│          Aerus COM            │
+│       CAMADA DE APLICAÇÃO     │
 │                               │
 │   TLV + Prioridade + Eventos  │
 │   Filas + Gestão de Mensagens │
 └───────────────┬───────────────┘
                 │
                 ▼
-              UART
+┌───────────────────────────────┐
+│      CAMADA DE TRANSPORTE     │
+│                               │
+│   CAN FD (29-bit ID)          │
+│   Roteamento + Prioridade     │
+│   + Fragmentação              │
+└───────────────┬───────────────┘
+                │
+                ▼
+┌───────────────────────────────┐
+│       CAMADA FÍSICA           │
+│                               │
+│   CAN FD (twisted pair)       │
+│   Terminação + Born-off       │
+└───────────────┬───────────────┘
                 │
                 ▼
 ┌───────────────────────────────┐
@@ -75,7 +94,7 @@ De forma simplificada:
 └───────────────────────────────┘
 ```
 
-A especificação detalhada desta camada pertence a `COM/`.
+A especificação detalhada destas camadas pertence a `COM/`.
 
 ---
 
@@ -93,26 +112,34 @@ Quando uma informação puder seguir o fluxo normal do sistema, deverá preferen
 
 # 6. Ligações Atualmente Definidas
 
-A arquitetura atualmente estabelecida contempla as seguintes comunicações:
+A arquitetura atualmente estabelecida contempla dois buses CAN FD independentes:
 
 ```text
-                 ┌──────────────┐
-                 │   ESP32-FS   │
-                 └──────┬───────┘
-                        │
-          ┌─────────────┼─────────────┐
-          │             │             │
-          ▼             ▼             ▼
-     ESP32-S       RaspberryPi     ESP32-FS_A
-          │             │
-          │             │
-          └──────┬──────┘
-                 │
-                 ▼
-              ESP32-A
+BUS OPERACIONAL (partilhado):
+┌──────────────────────────────────────────────────────────────────┐
+│  ESP32-S_01   ESP32-S_02   RaspberryPi   ESP32-A   ESP32-FS    │
+│  CAN_ID:0x11  CAN_ID:0x12  CAN_ID:0x01  CAN_ID:0x21 CAN_ID:0x31│
+└──────────────────────────────────────────────────────────────────┘
+
+BUS SEGURANÇA (dedicado):
+┌──────────────────────────────────────────────────────────────────┐
+│  ESP32-FS    ESP32-FS_A                                         │
+│  CAN_ID:0x31  CAN_ID:0x41                                      │
+└──────────────────────────────────────────────────────────────────┘
+
+        ESP32-FS está conectado a AMBOS os buses
 ```
 
-Esta representação demonstra apenas as relações atualmente estabelecidas e não constitui ainda o esquema definitivo da topologia física.
+A tabela completa de alocação de CAN IDs encontra-se em `shared/CAN_IDS`.
+
+A comunicação entre controladores e periféricos utiliza interfaces seriais dedicadas:
+
+```text
+ESP32-S    ←─UART/SPI/I2C─→ Sensores
+ESP32-A    ←─UART/SPI/I2C─→ Atuadores
+ESP32-FS   ←─UART/SPI/I2C─→ Sensores supercríticos
+ESP32-FS_A ←─UART/SPI/I2C─→ Atuadores emergência
+```
 
 ---
 
@@ -271,11 +298,19 @@ Um módulo não deverá contornar deliberadamente este fluxo sem motivo funciona
 
 # 15. Protocolo TLV
 
-As mensagens transmitidas entre diferentes elementos computacionais serão estruturadas através de um protocolo baseado em **TLV — Type, Length, Value**.
+As mensagens transmitidas entre diferentes elementos computacionais são estruturadas através de um protocolo completo baseado em **TLV — Type, Length, Value**.
 
-O TLV permitirá estruturar as mensagens de forma modular e extensível.
+O TLV é um protocolo autónomo e seguro, constituído por:
 
-A estrutura detalhada dos campos, tipos, comprimentos, valores e regras de validação pertence a `COM/`.
+* START (0xAA) — byte de sincronização;
+* MSG_ID (0x10-0x1F) — tipo de mensagem;
+* TLV_COUNT — número de campos;
+* TLV_FIELDS — campos ID+LEN+DATA;
+* CRC8 (SMBUS 0x07) — integridade;
+* HMAC (32 bytes) — autenticação (opcional, via módulo Security);
+* SEQ (4 bytes) — anti-replay (opcional).
+
+A estrutura detalhada dos campos, tipos, comprimentos, valores e regras de validação pertence a `COM-002` e `shared/TLV_DEFINITIONS`.
 
 ---
 
@@ -393,7 +428,7 @@ Sensor C ── aquisição ──►
                            │
                            │ frequência de comunicação
                            ▼
-                     UART / TLV
+                     CAN FD / TLV
 ```
 
 Assim, um ESP32-S poderá adquirir diferentes sensores em frequências distintas e posteriormente transmitir os dados segundo a frequência de comunicação definida.
@@ -564,7 +599,8 @@ Este documento não define detalhadamente:
 * *cooldowns* concretos;
 * gestão detalhada das filas;
 * estados de erro;
-* implementação de drivers UART.
+* implementação de drivers CAN;
+* implementação de drivers UART/SPI/I2C para periféricos.
 
 Esses elementos deverão ser definidos em `COM/` e `SEC/`, conforme a respetiva função.
 
@@ -583,6 +619,11 @@ Esses elementos deverão ser definidos em `COM/` e `SEC/`, conforme a respetiva 
 - SYS-005 — Fluxo_Global_de_Informacao
 - SYS-006 — Gestao_de_Estados
 - SYS-008 — Gestao_Temporal
+- COM-001 — Arquitetura_de_Comunicacao
+- COM-002 — Protocolo_TLV
+- COM-008 — CAN_Bus
+- SHARED-TLV — Definições do Protocolo TLV
+- SHARED-CAN-IDS — Alocação de CAN IDs
 - SEN — Especificações de Sensores
 - SEC — Especificações de Segurança
 - COM — Especificações de Comunicações
