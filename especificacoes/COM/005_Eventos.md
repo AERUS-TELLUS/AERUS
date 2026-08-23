@@ -39,32 +39,32 @@ Um evento é uma mensagem TLV transmitida em resposta a uma ocorrência signific
 
 ## 3.2 Diferença entre Evento e Mensagem Periódica
 
-| Característica | Mensagem Periódica | Evento |
-|---------------|-------------------|--------|
-| Gatilho | Timer/ciclo | Ocorrência/estado |
-| Frequência | Regular (configurada) | Irregular (sob demanda) |
-| Latência | Aceitável | Mínima (imediata) |
-| Prioridade | Variável | Tipicamente HIGH ou superior |
-| Exemplo | MSG_TELEMETRY | MSG_FAILSAFE |
+| Característica | Mensagem Periódica    | Evento                       |
+|----------------|-----------------------|------------------------------|
+| Gatilho        | Timer/ciclo           | Ocorrência/estado            |
+| Frequência     | Regular (configurada) | Irregular (sob demanda)      |
+| Latência       | Aceitável             | Mínima (imediata)            |
+| Prioridade     | Variável              | Tipicamente HIGH ou superior |
+| Exemplo        | **MSG_TELEMETRY**     | **MSG_FAILSAFE**             |
 
 ## 3.3 Estrutura de um Evento
 
 ```text
 ┌─────────────────────────────────────────────────────────────┐
-│  EVENTO = Mensagem TLV + Metadados de Evento                 │
-│                                                              │
-│  Mensagem TLV:                                               │
-│  ┌─────────┬─────────┬───────────┬─────────────┬─────────┐ │
-│  │ START   │ MSG_ID  │ TLV COUNT │ TLV FIELDS  │ CRC8    │ │
-│  │ (0xAA)  │(0x10-1F)│  (0-32)   │ (variável)  │         │ │
-│  └─────────┴─────────┴───────────┴─────────────┴─────────┘ │
-│                                                              │
-│  Metadados de Evento (no TLV FIELDS):                        │
-│  - EVENT_TYPE (tipo do evento)                               │
-│  - EVENT_SOURCE (origem do evento)                           │
-│  - EVENT_TIMESTAMP (quando ocorreu)                          │
-│  - EVENT_SEVERITY (gravidade)                                │
-│  - EVENT_DATA (dados específicos do evento)                  │
+│  EVENTO = Mensagem TLV + Metadados de Evento                │
+│                                                             │
+│  Mensagem TLV:                                              │
+│  ┌─────────┬─────────┬───────────┬─────────────┬─────────┐  │
+│  │ START   │ MSG_ID  │ TLV COUNT │ TLV FIELDS  │ CRC8    │  │
+│  │ (0xAA)  │(0x10-1F)│  (0-32)   │ (variável)  │         │  │
+│  └─────────┴─────────┴───────────┴─────────────┴─────────┘  │
+│                                                             │
+│  Metadados de Evento (no TLV FIELDS):                       │
+│  - EVENT_TYPE (tipo do evento)                              │
+│  - EVENT_SOURCE (origem do evento)                          │
+│  - EVENT_TIMESTAMP (quando ocorreu)                         │
+│  - EVENT_SEVERITY (gravidade)                               │
+│  - EVENT_DATA (dados específicos do evento)                 │
 └─────────────────────────────────────────────────────────────┘
 ```
 
@@ -74,13 +74,13 @@ Um evento é uma mensagem TLV transmitida em resposta a uma ocorrência signific
 
 ## 4.1 Classificação
 
-| Tipo | Constante | Descrição | Prioridade |
-|------|-----------|-----------|-----------|
-| Segurança | `EVT_SAFETY` | Condições de segurança/failsafe | SUPER_CRITICAL |
-| Sensor | `EVT_SENSOR` | Anomalias ou mudanças em sensores | HIGH |
-| Atuador | `EVT_ACTUATOR` | Falhas ou mudanças em atuadores | HIGH |
-| Sistema | `EVT_SYSTEM` | Mudanças de estado, erros internos | MEDIUM-HIGH |
-| Comunicação | `EVT_COMM` | Perda de comunicação, erros de CAN | HIGH |
+| Tipo        | Constante      | Descrição                          | Prioridade     |
+|-------------|----------------|------------------------------------|----------------|
+| Segurança   | `EVT_SAFETY`   | Condições de segurança/failsafe    | SUPER_CRITICAL |
+| Sensor      | `EVT_SENSOR`   | Anomalias ou mudanças em sensores  | HIGH           |
+| Atuador     | `EVT_ACTUATOR` | Falhas ou mudanças em atuadores    | HIGH           |
+| Sistema     | `EVT_SYSTEM`   | Mudanças de estado, erros internos | MEDIUM-HIGH    |
+| Comunicação | `EVT_COMM`     | Perda de comunicação, erros de CAN | HIGH           |
 
 ## 4.2 Eventos Específicos
 

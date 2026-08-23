@@ -41,35 +41,35 @@ A comunicação entre Grupos Computacionais é composta por três camadas:
 
 ```text
 ┌─────────────────────────────────────────────────────────┐
-│                    CAMADA DE APLICAÇÃO                    │
-│                                                           │
-│              Protocolo TLV (Type-Length-Value)             │
-│                                                           │
+│                    CAMADA DE APLICAÇÃO                  │
+│                                                         │
+│              Protocolo TLV (Type-Length-Value)          │
+│                                                         │
 │  START │ MSG_ID │ COUNT │ FIELDS[ID+LEN+N] │ CRC8 │ ... │
-│                                                           │
-│  Responsável: significado, integridade, autenticação      │
+│                                                         │
+│  Responsável: significado, integridade, autenticação    │
 └──────────────────────────┬──────────────────────────────┘
                            │
                            │ payload serializado
                            ▼
-┌─────────────────────────────────────────────────────────┐
-│                    CAMADA DE TRANSPORTE                    │
-│                                                           │
-│                    CAN FD (29-bit ID)                      │
-│                                                           │
-│  CAN_ID[origem + destino + tipo + prioridade] │ Payload  │
-│                                                           │
-│  Responsável: roteamento, prioridade, arbiter, fragmentação│
-└──────────────────────────┬──────────────────────────────┘
+┌─────────────────────────────────────────────────────────────┐
+│                    CAMADA DE TRANSPORTE                     │
+│                                                             │
+│                    CAN FD (29-bit ID)                       │
+│                                                             │
+│  CAN_ID[origem + destino + tipo + prioridade] │ Payload     │
+│                                                             │
+│  Responsável: roteamento, prioridade, arbiter, fragmentação │
+└──────────────────────────┬──────────────────────────────────┘
                            │
                            │ frame CAN FD
                            ▼
 ┌─────────────────────────────────────────────────────────┐
-│                    CAMADA FÍSICA                          │
-│                                                           │
-│              CAN FD (twisted pair + terminated)           │
-│                                                           │
-│  Responsável: sinal elétrico, Born-off, isolamento        │
+│                    CAMADA FÍSICA                        │
+│                                                         │
+│              CAN FD (twisted pair + terminated)         │
+│                                                         │
+│  Responsável: sinal elétrico, Born-off, isolamento      │
 └─────────────────────────────────────────────────────────┘
 ```
 
@@ -127,10 +127,10 @@ O CAN ID de 29 bits transporta informação de roteamento:
 
 ```text
 ┌────────────────────────────────────────────────────────────┐
-│  CAN ID Extended (29 bits)                                  │
+│  CAN ID Extended (29 bits)                                 │
 │                                                            │
-│  PRIORIDADE │ GRUPO_ORIGEM │ GRUPO_DESTINO │ TIPO_MSG     │
-│   (3 bit)   │   (4 bit)    │    (4 bit)    │  (4 bit)     │
+│  PRIORIDADE │ GRUPO_ORIGEM │ GRUPO_DESTINO │ TIPO_MSG      │
+│   (3 bit)   │   (4 bit)    │    (4 bit)    │  (4 bit)      │
 └────────────────────────────────────────────────────────────┘
 ```
 
@@ -149,14 +149,14 @@ A comunicação CAN FD do Aerus utiliza uma topologia partilhada (bus) com dois 
 ```text
 BUS OPERACIONAL:
 ┌──────────────────────────────────────────────────────────────────┐
-│  ESP32-S_01   ESP32-S_02   RaspberryPi   ESP32-A   ESP32-FS    │
-│  CAN_ID:0x11  CAN_ID:0x12  CAN_ID:0x01  CAN_ID:0x21 CAN_ID:0x31│
+│  ESP32-S_01   ESP32-S_02   RaspberryPi   ESP32-A   ESP32-FS      │
+│  CAN_ID:0x11  CAN_ID:0x12  CAN_ID:0x01  CAN_ID:0x21 CAN_ID:0x31  │
 └──────────────────────────────────────────────────────────────────┘
 
 BUS SEGURANÇA:
 ┌──────────────────────────────────────────────────────────────────┐
-│  ESP32-FS    ESP32-FS_A                                         │
-│  CAN_ID:0x31  CAN_ID:0x41                                      │
+│  ESP32-FS    ESP32-FS_A                                          │
+│  CAN_ID:0x31  CAN_ID:0x41                                        │
 └──────────────────────────────────────────────────────────────────┘
 ```
 
@@ -166,13 +166,13 @@ O ESP32-FS está conectado a ambos os buses, funcionando como ponte entre o dom�
 
 O bitrate é variável e depende do tipo de dado:
 
-| Tipo de Dado            | Bitrate (Dados) | Bitrate (Arbitragem) |
-|------------------------|-----------------|---------------------|
-| Telemetria sensores    | 2 Mbps          | 500 kbps            |
-| Comandos de controlo   | 2 Mbps          | 500 kbps            |
-| Heartbeat / estados    | 500 kbps        | 500 kbps            |
-| Segurança / emergência | 5 Mbps          | 1 Mbps              |
-| Vídeo                  | 5 Mbps          | 1 Mbps              |
+| Tipo de Dado           | Bitrate (Dados) | Bitrate (Arbitragem) |
+|------------------------|-----------------|----------------------|
+| Telemetria sensores    | 2 Mbps          | 500 kbps             |
+| Comandos de controlo   | 2 Mbps          | 500 kbps             |
+| Heartbeat / estados    | 500 kbps        | 500 kbps             |
+| Segurança / emergência | 5 Mbps          | 1 Mbps               |
+| Vídeo                  | 5 Mbps          | 1 Mbps               |
 
 ## 6.3 Referência
 
@@ -199,27 +199,27 @@ Estas interfaces estão documentadas em `HW-006` e `HW-004`.
 
 ```text
 ┌──────────────────────────────────────────────────────────────────┐
-│                     AERUS - VISÃO DE COMUNICAÇÃO                  │
+│                     AERUS - VISÃO DE COMUNICAÇÃO                 │
 │                                                                  │
 │  ┌────────────────────────────────────────────────────────────┐  │
-│  │              COMUNICAÇÃO LOCAL (periféricos)                │  │
+│  │              COMUNICAÇÃO LOCAL (periféricos)               │  │
 │  │                                                            │  │
-│  │  ESP32-S ←─UART/SPI/I2C─→ Sensores                       │  │
-│  │  ESP32-A ←─UART/SPI/I2C─→ Atuadores                      │  │
-│  │  ESP32-FS ←─UART/SPI/I2C─→ Sensores supercríticos        │  │
-│  │  ESP32-FS_A ←─UART/SPI/I2C─→ Atuadores emergência        │  │
+│  │  ESP32-S ←─UART/SPI/I2C─→ Sensores                         │  │
+│  │  ESP32-A ←─UART/SPI/I2C─→ Atuadores                        │  │
+│  │  ESP32-FS ←─UART/SPI/I2C─→ Sensores supercríticos          │  │
+│  │  ESP32-FS_A ←─UART/SPI/I2C─→ Atuadores emergência          │  │
 │  └────────────────────────────────────────────────────────────┘  │
 │                                                                  │
 │  ┌────────────────────────────────────────────────────────────┐  │
-│  │         COMUNICAÇÃO INTER-GRUPOS (CAN bus)                  │  │
+│  │         COMUNICAÇÃO INTER-GRUPOS (CAN bus)                 │  │
 │  │                                                            │  │
 │  │  ┌──────────────────────────────────────────────────────┐  │  │
-│  │  │          BUS OPERACIONAL (partilhado)                 │  │  │
-│  │  │  ESP32-S ←→ RaspberryPi ←→ ESP32-A ←→ ESP32-FS      │  │  │
+│  │  │          BUS OPERACIONAL (partilhado)                │  │  │
+│  │  │  ESP32-S ←→ RaspberryPi ←→ ESP32-A ←→ ESP32-FS       │  │  │
 │  │  └──────────────────────────────────────────────────────┘  │  │
 │  │                                                            │  │
 │  │  ┌──────────────────────────────────────────────────────┐  │  │
-│  │  │          BUS SEGURANÇA (dedicado)                      │  │  │
+│  │  │          BUS SEGURANÇA (dedicado)                    │  │  │
 │  │  │  ESP32-FS ←→ ESP32-FS_A                              │  │  │
 │  │  └──────────────────────────────────────────────────────┘  │  │
 │  │                                                            │  │
@@ -234,13 +234,13 @@ Estas interfaces estão documentadas em `HW-006` e `HW-004`.
 
 A arquitetura de comunicação possui cinco camadas de proteção:
 
-| Camada | Mecanismo | Protege contra |
-|--------|-----------|----------------|
-| 1 | CRC nativo CAN FD (17-bit) | Erros de transmissão no canal físico |
-| 2 | CRC8 TLV (SMBUS 0x07) | Corrupção na camada de aplicação |
-| 3 | HMAC TLV (32 bytes) | Mensagens falsificadas (requer módulo Security) |
-| 4 | CAN ID + assinatura | Identificação e autenticação no transporte |
-| 5 | SEQ TLV (4 bytes) | Reenvio de mensagens capturadas (anti-replay) |
+| Camada | Mecanismo                  | Protege contra                                  |
+|--------|----------------------------|-------------------------------------------------|
+| 1      | CRC nativo CAN FD (17-bit) | Erros de transmissão no canal físico            |
+| 2      | CRC8 TLV (SMBUS 0x07)      | Corrupção na camada de aplicação                |
+| 3      | HMAC TLV (32 bytes)        | Mensagens falsificadas (requer módulo Security) |
+| 4      | CAN ID + assinatura        | Identificação e autenticação no transporte      |
+| 5      | SEQ TLV (4 bytes)          | Reenvio de mensagens capturadas (anti-replay)   |
 
 ---
 
@@ -251,14 +251,14 @@ A prioridade das mensagens é determinada por dois mecanismos complementares:
 1. **CAN ID (arbiter nativo):** O bit de prioridade no CAN ID determina quem transmite quando vários nodos competem pelo bus. ID mais baixo = prioridade mais alta.
 2. **TLV MSG_ID (lógica de aplicação):** O tipo de mensagem determina a prioridade de processamento e descarte no receptor.
 
-| Prioridade     | CAN ID Bits | TLV MSG_ID(s) | Comportamento |
-|----------------|-------------|---------------|---------------|
-| SUPER_CRITICAL | 0           | MSG_FAILSAFE, MSG_SAFETY_DATA | Nunca descartado |
-| CRITICAL       | 1           | MSG_COMMAND | Sempre transmitido |
-| HIGH           | 2           | MSG_TELEMETRY, MSG_HEARTBEAT, MSG_SI_DATA | Prioridade alta |
-| MEDIUM         | 3           | MSG_VIDEO, MSG_ACK | Prioridade normal |
-| LOW            | 4           | MSG_SHELL_CMD | Pode ser atrasado |
-| SUPER_LOW      | 5           | MSG_DEBUG | Descartável se necessário |
+| Prioridade     | CAN ID Bits | TLV MSG_ID(s)                             | Comportamento             |
+|----------------|-------------|-------------------------------------------|---------------------------|
+| SUPER_CRITICAL | 0           | MSG_FAILSAFE, MSG_SAFETY_DATA             | Nunca descartado          |
+| CRITICAL       | 1           | MSG_COMMAND                               | Sempre transmitido        |
+| HIGH           | 2           | MSG_TELEMETRY, MSG_HEARTBEAT, MSG_SI_DATA | Prioridade alta           |
+| MEDIUM         | 3           | MSG_VIDEO, MSG_ACK                        | Prioridade normal         |
+| LOW            | 4           | MSG_SHELL_CMD                             | Pode ser atrasado         |
+| SUPER_LOW      | 5           | MSG_DEBUG                                 | Descartável se necessário |
 
 ---
 
@@ -269,8 +269,8 @@ Mensagens TLV que excedam o payload máximo de um frame CAN FD (64 bytes) são f
 ```text
 Mensagem TLV grande:
 ┌─────────────────────────────────────────────────────────────────┐
-│ START │ MSG_ID │ COUNT │ FIELD1 │ FIELD2 │ ... │ FIELD_N │ CRC8│
-└───────┴────────┴───────┴────────┴────────┴─────┴─────────┴─────┘
+│ START │ MSG_ID │ COUNT │ FIELD1 │ FIELD2 │ ... │ FIELD_N │ CRC8 │
+└───────┴────────┴───────┴────────┴────────┴─────┴─────────┴──────┘
                            │
                            │ fragmentação
                            ▼

@@ -54,48 +54,48 @@ Este documento aplica-se a todos os Grupos Computacionais do Aerus:
 ┌─────────────────────────────────────────────────────────────────────┐
 │                        GESTOR DE MENSAGENS                          │
 │                                                                     │
-│  ┌────────────┐   ┌─────────────┐   ┌─────────────┐               │
-│  │  Módulo A   │   │  Módulo B   │   │  Módulo C   │  ← Aplicação │
-│  └─────┬──────┘   └──────┬──────┘   └──────┬──────┘               │
-│        │                  │                  │                       │
-│        ▼                  ▼                  ▼                       │
-│  ┌─────────────────────────────────────────────────────────────┐   │
-│  │                   DISPATCHER                                │   │
-│  │  - Roteamento por destino (CAN ID)                          │   │
-│  │  - Roteamento por tipo (MSG_ID)                             │   │
-│  │  - Filas por prioridade                                     │   │
-│  └──────────────────────────┬──────────────────────────────────┘   │
+│  ┌────────────┐   ┌─────────────┐   ┌─────────────┐                 │
+│  │  Módulo A   │   │  Módulo B   │   │  Módulo C   │  ← Aplicação   │
+│  └─────┬──────┘   └──────┬──────┘   └──────┬──────┘                 │
+│        │                  │                  │                      │
+│        ▼                  ▼                  ▼                      │
+│  ┌─────────────────────────────────────────────────────────────┐    │
+│  │                   DISPATCHER                                │    │
+│  │  - Roteamento por destino (CAN ID)                          │    │
+│  │  - Roteamento por tipo (MSG_ID)                             │    │
+│  │  - Filas por prioridade                                     │    │
+│  └──────────────────────────┬──────────────────────────────────┘    │
 │                             │                                       │
-│        ┌────────────────────┼────────────────────┐                 │
+│        ┌────────────────────┼────────────────────┐                  │
 │        ▼                    ▼                    ▼                  │
-│  ┌──────────┐       ┌──────────────┐       ┌──────────┐           │
-│  │ TX Queue │       │   VALIDATOR  │       │ RX Queue │           │
-│  │ (por     │       │  - CRC8      │       │ (por     │           │
-│  │ priorid.)│       │  - Estrutura │       │ priorid.)│           │
-│  └────┬─────┘       │  - Limites   │       └────┬─────┘           │
-│       │             └──────┬───────┘              │                │
-│       │                    │                      │                │
-│       ▼                    ▼                      ▼                │
-│  ┌──────────┐       ┌──────────────┐       ┌──────────┐           │
-│  │   CAN    │       │ FRAGMENTADOR │       │ RECUPO-  │           │
-│  │  DRIVER  │◄─────►│ / RECUPOSI-  │◄─────►│ RADOR    │           │
-│  │          │       │  TOR         │       │          │           │
-│  └──────────┘       └──────────────┘       └──────────┘           │
+│  ┌──────────┐       ┌──────────────┐       ┌──────────┐             │
+│  │ TX Queue │       │   VALIDATOR  │       │ RX Queue │             │
+│  │ (por     │       │  - CRC8      │       │ (por     │             │
+│  │ priorid.)│       │  - Estrutura │       │ priorid.)│             │
+│  └────┬─────┘       │  - Limites   │       └────┬─────┘             │
+│       │             └──────┬───────┘              │                 │
+│       │                    │                      │                 │
+│       ▼                    ▼                      ▼                 │
+│  ┌──────────┐       ┌──────────────┐       ┌──────────┐             │
+│  │   CAN    │       │ FRAGMENTADOR │       │ RECUPO-  │             │
+│  │  DRIVER  │◄─────►│ / RECUPOSI-  │◄─────►│ RADOR    │             │
+│  │          │       │  TOR         │       │          │             │
+│  └──────────┘       └──────────────┘       └──────────┘             │
 │                                                                     │
 └─────────────────────────────────────────────────────────────────────┘
 ```
 
 ## 4.2 Componentes
 
-| Componente         | Responsabilidade |
-|-------------------|-----------------|
+| Componente        | Responsabilidade                                          |
+|-------------------|-----------------------------------------------------------|
 | Dispatcher        | Roteamento de mensagens para módulos locais ou para o CAN |
-| Validator         | Validação de estrutura, CRC8 e limites das mensagens |
-| TX Queue          | Fila de transmissão organizada por prioridade |
-| RX Queue          | Fila de receção organizada por prioridade |
-| Fragmentador      | Divisão de mensagens grandes em frames CAN FD |
-| Recuprador        | Reconstrução de mensagens fragmentadas |
-| CAN Driver        | Interface com o hardware CAN FD |
+| Validator         | Validação de estrutura, CRC8 e limites das mensagens      |
+| TX Queue          | Fila de transmissão organizada por prioridade             |
+| RX Queue          | Fila de receção organizada por prioridade                 |
+| Fragmentador      | Divisão de mensagens grandes em frames CAN FD             |
+| Recuprador        | Reconstrução de mensagens fragmentadas                    |
+| CAN Driver        | Interface com o hardware CAN FD                           |
 
 ---
 
@@ -125,14 +125,14 @@ Frame CAN FD recebido
 └───────────────┘     └───────┬─────────┘
                               │
                               ▼
-                    ┌─────────────────┐
-                    │ VALIDATOR       │
-                    │ 1. START=0xAA?  │──(não)──→ Descarte + Log
+                    ┌──────────────────┐
+                    │ VALIDATOR        │
+                    │ 1. START=0xAA?   │──(não)──→ Descarte + Log
                     │ 2. MSG_ID válido?│──(não)──→ Descarte + Log
-                    │ 3. tlvCount≤32? │──(não)──→ Descarte + Log
-                    │ 4. CRC8 válido? │──(não)──→ Descarte + Log
-                    │ 5. Tamanho OK?  │──(não)──→ Descarte + Log
-                    └───────┬─────────┘
+                    │ 3. tlvCount≤32?  │──(não)──→ Descarte + Log
+                    │ 4. CRC8 válido?  │──(não)──→ Descarte + Log
+                    │ 5. Tamanho OK?   │──(não)──→ Descarte + Log
+                    └───────┬──────────┘
                             │(válido)
                             ▼
                     ┌─────────────────┐
@@ -155,27 +155,27 @@ Frame CAN FD recebido
 
 O Validator executa as seguintes verificações em sequência:
 
-| Verificação | Descrição | Ação em caso de falha |
-|------------|-----------|----------------------|
-| START byte | Primeiro byte deve ser 0xAA | Descarte imediato |
-| MSG_ID | Deve estar no intervalo 0x10-0x1F | Descarte + incremento contador |
-| TLV COUNT | Deve ser ≤ 32 | Descarte + incremento contador |
-| CRC8 | Deve corresponder ao CRC calculado | Descarte + incremento contador |
-| Tamanho | Mensagem serializada ≤ 1024 bytes | Descarte + incremento contador |
-| CAN ID origem | Grupo de origem deve ser conhecido | Descarte + log de segurança |
-| CAN ID destino | Grupo destino deve ser este nó ou broadcast | Descarte silencioso |
+| Verificação    | Descrição                                   | Ação em caso de falha          |
+|----------------|---------------------------------------------|--------------------------------|
+| START byte     | Primeiro byte deve ser 0xAA                 | Descarte imediato              |
+| MSG_ID         | Deve estar no intervalo 0x10-0x1F           | Descarte + incremento contador |
+| TLV COUNT      | Deve ser ≤ 32                               | Descarte + incremento contador |
+| CRC8           | Deve corresponder ao CRC calculado          | Descarte + incremento contador |
+| Tamanho        | Mensagem serializada ≤ 1024 bytes           | Descarte + incremento contador |
+| CAN ID origem  | Grupo de origem deve ser conhecido          | Descarte + log de segurança    |
+| CAN ID destino | Grupo destino deve ser este nó ou broadcast | Descarte silencioso            |
 
 ## 5.3 Contadores de Erro
 
 Cada grupo de origem possui contadores independentes:
 
-| Contador | Descrição |
-|---------|-----------|
-| `rx_crc_errors[grupo]` | CRC8 inválido recebido do grupo X |
-| `rx_structure_errors[grupo]` | Estrutura inválida recebida do grupo X |
-| `rx_limit_errors[grupo]` | Limites excedidos recebidos do grupo X |
-| `rx_total[grupo]` | Total de mensagens recebidas do grupo X |
-| `rx_discarded[grupo]` | Total de mensagens descartadas do grupo X |
+| Contador                     | Descrição                                 |
+|------------------------------|-------------------------------------------|
+| `rx_crc_errors[grupo]`       | CRC8 inválido recebido do grupo X         |
+| `rx_structure_errors[grupo]` | Estrutura inválida recebida do grupo X    |
+| `rx_limit_errors[grupo]`     | Limites excedidos recebidos do grupo X    |
+| `rx_total[grupo]`            | Total de mensagens recebidas do grupo X   |
+| `rx_discarded[grupo]`        | Total de mensagens descartadas do grupo X |
 
 ---
 
@@ -206,11 +206,11 @@ Módulo de aplicação solicita envio
 └───────┬───────┘
         │
         ▼
-┌───────────────────────┐     ┌───────────────────┐
-│ Tamanho ≤ 64 bytes?   │─sim─→│ TX Queue          │
-│                       │     │ (classificação por │
-└───────────┬───────────┘     │  prioridade)      │
-            │não              └────────┬──────────┘
+┌───────────────────────┐      ┌────────────────────┐
+│ Tamanho ≤ 64 bytes?   │─sim─→│ TX Queue           │
+│                       │      │ (classificação por │
+└───────────┬───────────┘      │  prioridade)       │
+            │não               └────────┬───────────┘
             ▼                          │
     ┌───────────────┐                  ▼
     │ FRAGMENTADOR  │          ┌───────────────┐
@@ -239,25 +239,25 @@ O CAN ID de 29 bits é construído a partir de parâmetros configuráveis:
 CAN ID = (Prioridade << 26) | (GrupoOrigem << 22) | (GrupoDestino << 18) | (TipoMsg << 14)
 ```
 
-| Campo          | Bits   | Fonte |
-|---------------|--------|-------|
-| Prioridade    | 28-26  | Derivada do MSG_ID ou configurada |
-| Grupo Origem  | 25-22  | Configurado por elemento |
+| Campo         | Bits   | Fonte                                 |
+|---------------|--------|---------------------------------------|
+| Prioridade    | 28-26  | Derivada do MSG_ID ou configurada     |
+| Grupo Origem  | 25-22  | Configurado por elemento              |
 | Grupo Destino | 21-18  | Especificado pelo módulo de aplicação |
-| Tipo Mensagem | 17-14  | Classificação do tipo de dado |
-| Reservado     | 13-0   | Zeros |
+| Tipo Mensagem | 17-14  | Classificação do tipo de dado         |
+| Reservado     | 13-0   | Zeros                                 |
 
 ## 6.3 Encaminhamento
 
 O Dispatcher utiliza a seguinte tabela de roteamento:
 
-| Condição                          | Ação |
-|----------------------------------|------|
-| Destino = este nó                | Entrega ao módulo local |
-| Destino = broadcast (0x0)        | Entrega ao módulo local + retransmite |
-| Destino = outro nó (bus oper.)   | Encaminha para TX Queue do bus operacional |
+| Condição                         | Ação                                        |
+|----------------------------------|---------------------------------------------|
+| Destino = este nó                | Entrega ao módulo local                     |
+| Destino = broadcast (0x0)        | Entrega ao módulo local + retransmite       |
+| Destino = outro nó (bus oper.)   | Encaminha para TX Queue do bus operacional  |
 | Destino = outro nó (bus seg.)    | Encaminha para TX Queue do bus de segurança |
-| Origem = desconhecida            | Descarte + log de segurança |
+| Origem = desconhecida            | Descarte + log de segurança                 |
 
 ---
 
@@ -279,11 +279,11 @@ Espaço para campos  ≈ 48 bytes mínimo por frame
 
 ## 7.2 Estrutura de Fragmentação
 
-| Campo            | Tamanho | Descrição |
-|-----------------|---------|-----------|
+| Campo           | Tamanho | Descrição                     |
+|-----------------|---------|-------------------------------|
 | Fragment Index  | 1 byte  | Índice do fragmento (0-based) |
-| Fragment Total  | 1 byte  | Número total de fragmentos |
-| TLV Payload     | Variável| Dados TLV neste fragmento |
+| Fragment Total  | 1 byte  | Número total de fragmentos    |
+| TLV Payload     | Variável| Dados TLV neste fragmento     |
 
 ## 7.3 Regras de Fragmentação
 
@@ -324,16 +324,16 @@ A prioridade é determinada por dois mecanismos complementares:
 ```text
 ┌─────────────────────────────────────────────────────────────┐
 │  CAMADA 1: CAN ID (arbiter hardware)                        │
-│                                                              │
-│  Bits 28-26 do CAN ID determinam quem vence a arbitragem     │
-│  ID mais baixo = prioridade mais alta = transmite primeiro   │
+│                                                             │
+│  Bits 28-26 do CAN ID determinam quem vence a arbitragem    │
+│  ID mais baixo = prioridade mais alta = transmite primeiro  │
 └─────────────────────────────────────────────────────────────┘
                             +
 ┌─────────────────────────────────────────────────────────────┐
 │  CAMADA 2: TLV MSG_ID (lógica de aplicação)                 │
-│                                                              │
-│  MSG_ID determina prioridade de processamento e descarte     │
-│  no receptor                                                 │
+│                                                             │
+│  MSG_ID determina prioridade de processamento e descarte    │
+│  no receptor                                                │
 └─────────────────────────────────────────────────────────────┘
 ```
 
@@ -360,26 +360,26 @@ O Gestor de Mensagens gere exclusivamente a comunicação inter-grupos via CAN. 
 
 ```text
 ┌──────────────────────────────────────────────────────────────┐
-│                     GESTOR DE MENSAGENS                       │
-│                                                               │
+│                     GESTOR DE MENSAGENS                      │
+│                                                              │
 │  Comunicação INTER-GRUPOS (CAN FD)                           │
 │  ├── ESP32-S  → RaspberryPi (telemetria)                     │
 │  ├── ESP32-S  → ESP32-FS (telemetria redundante)             │
 │  ├── RaspberryPi → ESP32-A (comandos)                        │
-│  ├── ESP32-FS → ESP32-FS_A (emergência, bus segurança)      │
+│  ├── ESP32-FS → ESP32-FS_A (emergência, bus segurança)       │
 │  └── Todos → Todos (heartbeat, estados)                      │
-│                                                               │
+│                                                              │
 └──────────────────────────────────────────────────────────────┘
 
 ┌──────────────────────────────────────────────────────────────┐
-│               MÓDULOS DE APLICAÇÃO (independentes)            │
-│                                                               │
+│               MÓDULOS DE APLICAÇÃO (independentes)           │
+│                                                              │
 │  Comunicação LOCAL (UART/SPI/I2C)                            │
-│  ├── ESP32-S  ←→ Sensores (UART/SPI/I2C)                    │
-│  ├── ESP32-A  ←→ Atuadores (UART/SPI/I2C)                   │
-│  ├── ESP32-FS ←→ Sensores supercríticos (UART/SPI/I2C)      │
-│  └── ESP32-FS_A ←→ Atuadores emergência (UART/SPI/I2C)      │
-│                                                               │
+│  ├── ESP32-S  ←→ Sensores (UART/SPI/I2C)                     │
+│  ├── ESP32-A  ←→ Atuadores (UART/SPI/I2C)                    │
+│  ├── ESP32-FS ←→ Sensores supercríticos (UART/SPI/I2C)       │
+│  └── ESP32-FS_A ←→ Atuadores emergência (UART/SPI/I2C)       │
+│                                                              │
 └──────────────────────────────────────────────────────────────┘
 ```
 
@@ -391,12 +391,12 @@ A comunicação com periféricos locais (sensores via UART/SPI/I2C) é da respon
 
 ## 9.3 Coexistência na Prática
 
-| Interface | Utilizador | Dados | Via Gestor? |
-|-----------|-----------|-------|-------------|
-| UART sensor | ESP32-S | Leituras brutas | Não (local) |
-| SPI atuador | ESP32-A | PWM, configuração | Não (local) |
-| I2C sensor | ESP32-FS | Dados críticos | Não (local) |
-| CAN FD | Todos | TLV serializado | Sim (obrigatório) |
+| Interface   | Utilizador | Dados             | Via Gestor?       |
+|-------------|------------|-------------------|-------------------|
+| UART sensor | ESP32-S    | Leituras brutas   | Não (local)       |
+| SPI atuador | ESP32-A    | PWM, configuração | Não (local)       |
+| I2C sensor  | ESP32-FS   | Dados críticos    | Não (local)       |
+| CAN FD      | Todos      | TLV serializado   | Sim (obrigatório) |
 
 ---
 
@@ -406,13 +406,13 @@ A comunicação com periféricos locais (sensores via UART/SPI/I2C) é da respon
 
 O Gestor de Mensagens processa eventos de forma especial:
 
-| Evento | Prioridade | Ação |
-|--------|-----------|------|
-| MSG_FAILSAFE recebido | SUPER_CRITICAL | Processamento imediato, notificação de segurança |
-| Perda de heartbeat | Variável | Ativação de timeout (ver `COM-006`) |
-| Erro CRC frequente | Média | Registo, notificação de diagnóstico |
-| Born-off CAN | Crítica | Notificação de segurança, tentativa de recuperação |
-| Fragmento perdido | Baixa | Descarte da mensagem, registo |
+| Evento                | Prioridade     | Ação                                               |
+|-----------------------|----------------|----------------------------------------------------|
+| MSG_FAILSAFE recebido | SUPER_CRITICAL | Processamento imediato, notificação de segurança   |
+| Perda de heartbeat    | Variável       | Ativação de timeout (ver `COM-006`)                |
+| Erro CRC frequente    | Média          | Registo, notificação de diagnóstico                |
+| Born-off CAN          | Crítica        | Notificação de segurança, tentativa de recuperação |
+| Fragmento perdido     | Baixa          | Descarte da mensagem, registo                      |
 
 ## 10.2 Registo e Rastreabilidade
 
@@ -431,14 +431,14 @@ Cada evento é registado com:
 
 ## 11.1 Funções Principais
 
-| Função | Descrição |
-|--------|-----------|
-| `gm_init()` | Inicialização do gestor e filas |
-| `gm_send(msg, destino, prioridade)` | Enviar mensagem TLV para destino |
-| `gm_broadcast(msg, prioridade)` | Enviar mensagem TLV para todos |
-| `gm_register_handler(msg_id, callback)` | Registar handler para MSG_ID |
-| `gm_get_stats()` | Obter estatísticas de comunicação |
-| `gm_reset()` | Reiniciar gestor e limpar filas |
+| Função                                  | Descrição                         |
+|-----------------------------------------|-----------------------------------|
+| `gm_init()`                             | Inicialização do gestor e filas   |
+| `gm_send(msg, destino, prioridade)`     | Enviar mensagem TLV para destino  |
+| `gm_broadcast(msg, prioridade)`         | Enviar mensagem TLV para todos    |
+| `gm_register_handler(msg_id, callback)` | Registar handler para MSG_ID      |
+| `gm_get_stats()`                        | Obter estatísticas de comunicação |
+| `gm_reset()`                            | Reiniciar gestor e limpar filas   |
 
 ## 11.2 Callbacks
 
@@ -455,14 +455,14 @@ gm_register_handler(MSG_STATE_BROADCAST, on_state_received);
 
 ## 11.3 Limites Configuráveis
 
-| Parâmetro | Valor padrão | Descrição |
-|-----------|-------------|-----------|
-| `GM_MAX_QUEUES` | 6 | Número de filas (uma por prioridade) |
-| `GM_MAX_QUEUE_SIZE` | 32 | Tamanho máximo de cada fila |
-| `GM_MAX_HANDLERS` | 16 | Número máximo de handlers registados |
-| `GM_FRAGMENT_TIMEOUT_MS` | 100 | Timeout entre fragmentos |
-| `GM_MAX_FRAGMENTS` | 8 | Número máximo de fragmentos por mensagem |
-| `GM_RX_BUFFER_SIZE` | 2048 | Tamanho do buffer de receção |
+| Parâmetro                | Valor padrão | Descrição                                |
+|--------------------------|--------------|------------------------------------------|
+| `GM_MAX_QUEUES`          | 6            | Número de filas (uma por prioridade)     |
+| `GM_MAX_QUEUE_SIZE`      | 32           | Tamanho máximo de cada fila              |
+| `GM_MAX_HANDLERS`        | 16           | Número máximo de handlers registados     |
+| `GM_FRAGMENT_TIMEOUT_MS` | 100          | Timeout entre fragmentos                 |
+| `GM_MAX_FRAGMENTS`       | 8            | Número máximo de fragmentos por mensagem |
+| `GM_RX_BUFFER_SIZE`      | 2048         | Tamanho do buffer de receção             |
 
 ---
 
@@ -470,23 +470,23 @@ gm_register_handler(MSG_STATE_BROADCAST, on_state_received);
 
 ## 12.1 Módulos Dependentes
 
-| Módulo | Dependência | Descrição |
-|--------|------------|-----------|
-| Security (SEC/) | HMAC, SEQ | Autenticação e anti-replay |
-| State Manager (SYS-006) | Estados | Reação a mudanças de estado |
-| Temporal Manager (SYS-008) | Timeouts | Gestão de timeouts por grupo |
-| Safety Module (SEC/) | Failsafe | Processamento de mensagens de segurança |
+| Módulo                     | Dependência | Descrição                               |
+|----------------------------|-------------|-----------------------------------------|
+| Security (SEC/)            | HMAC, SEQ   | Autenticação e anti-replay              |
+| State Manager (SYS-006)    | Estados     | Reação a mudanças de estado             |
+| Temporal Manager (SYS-008) | Timeouts    | Gestão de timeouts por grupo            |
+| Safety Module (SEC/)       | Failsafe    | Processamento de mensagens de segurança |
 
 ## 12.2 Referências
 
-| Documento | Secção | Relação |
-|-----------|--------|---------|
-| SYS-003 | §13 | Definição do gestor na arquitetura de software |
-| COM-002 | §13 | Parser TLV utilizado pelo gestor |
-| COM-004 | — | Regras de prioridade e filas |
-| COM-006 | — | Timeouts e recuperação |
-| COM-008 | §14 | Fragmentação CAN FD |
-| COM-010 | — | Validação de integridade |
+| Documento | Secção | Relação                                        |
+|-----------|--------|------------------------------------------------|
+| SYS-003   | §13    | Definição do gestor na arquitetura de software |
+| COM-002   | §13    | Parser TLV utilizado pelo gestor               |
+| COM-004   | —      | Regras de prioridade e filas                   |
+| COM-006   | —      | Timeouts e recuperação                         |
+| COM-008   | §14    | Fragmentação CAN FD                            |
+| COM-010   | —      | Validação de integridade                       |
 
 ---
 
@@ -496,38 +496,38 @@ gm_register_handler(MSG_STATE_BROADCAST, on_state_received);
 
 O Gestor de Mensagens implementa validação em duas camadas:
 
-| Camada | Mecanismo | Proteção |
-|--------|-----------|----------|
-| CAN FD | CRC nativo 17-bit | Erros de transmissão física |
-| Aplicação | CRC8 TLV (SMBUS 0x07) | Corrupção na camada de aplicação |
-| Segurança | HMAC (32 bytes) | Mensagens falsificadas |
-| Anti-replay | SEQ (4 bytes) | Reenvio de mensagens capturadas |
+| Camada      | Mecanismo             | Proteção                         |
+|-------------|-----------------------|----------------------------------|
+| CAN FD      | CRC nativo 17-bit     | Erros de transmissão física      |
+| Aplicação   | CRC8 TLV (SMBUS 0x07) | Corrupção na camada de aplicação |
+| Segurança   | HMAC (32 bytes)       | Mensagens falsificadas           |
+| Anti-replay | SEQ (4 bytes)         | Reenvio de mensagens capturadas  |
 
 ## 13.2 Validação no Receiver
 
 ```text
 ┌──────────────────────────────────────────────────────┐
-│ SEQUÊNCIA DE VALIDAÇÃO NO RECEIVER                    │
-│                                                       │
+│ SEQUÊNCIA DE VALIDAÇÃO NO RECEIVER                   │
+│                                                      │
 │ 1. CAN CRC nativo ──(falha)──→ Descarte + incremento │
-│          │                                            │
-│          ▼ (sucesso)                                  │
+│          │                                           │
+│          ▼ (sucesso)                                 │
 │ 2. Filtro CAN ID ──(rejeitado)──→ Descarte           │
-│          │                                            │
-│          ▼ (aceite)                                   │
+│          │                                           │
+│          ▼ (aceite)                                  │
 │ 3. Parser TLV ──(erro)──→ Descarte + reset parser    │
-│          │                                            │
-│          ▼ (sucesso)                                  │
+│          │                                           │
+│          ▼ (sucesso)                                 │
 │ 4. CRC8 TLV ──(falha)──→ Descarte + incremento       │
-│          │                                            │
-│          ▼ (sucesso)                                  │
-│ 5. HMAC (se presente) ──(falha)──→ Descarte + alerta  │
-│          │                                            │
-│          ▼ (sucesso)                                  │
-│ 6. SEQ (se presente) ──(replay)──→ Descarte + alerta  │
-│          │                                            │
-│          ▼ (sucesso)                                  │
-│ 7. ENTREGA AO MÓDULO DE APLICAÇÃO                     │
+│          │                                           │
+│          ▼ (sucesso)                                 │
+│ 5. HMAC (se presente) ──(falha)──→ Descarte + alerta │
+│          │                                           │
+│          ▼ (sucesso)                                 │
+│ 6. SEQ (se presente) ──(replay)──→ Descarte + alerta │
+│          │                                           │
+│          ▼ (sucesso)                                 │
+│ 7. ENTREGA AO MÓDULO DE APLICAÇÃO                    │
 └──────────────────────────────────────────────────────┘
 ```
 

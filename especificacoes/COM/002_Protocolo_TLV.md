@@ -52,23 +52,23 @@ O TLV constitui a camada de aplicação completa e autónoma de comunicação. O
 
 ## 3.2 Campos
 
-| Campo      | Tamanho    | Descrição |
-|-----------|------------|-----------|
-| START     | 1 byte     | Byte de sincronização (0xAA) |
-| MSG ID    | 1 byte     | Tipo de mensagem (0x10-0x1F) |
-| TLV COUNT | 1 byte     | Número de campos TLV (0-32) |
-| TLV FIELDS| Variável   | Campos TLV: ID(1) + LEN(1) + DATA(N) |
-| CRC8      | 1 byte     | CRC8 SMBUS (polinómio 0x07) |
-| HMAC      | 32 bytes   | Opcional, gerido pelo módulo Security |
-| SEQ       | 4 bytes    | Opcional, anti-replay, gerido pelo Security |
+| Campo      | Tamanho    | Descrição                                   |
+|------------|------------|---------------------------------------------|
+| START      | 1 byte     | Byte de sincronização (0xAA)                |
+| MSG ID     | 1 byte     | Tipo de mensagem (0x10-0x1F)                |
+| TLV COUNT  | 1 byte     | Número de campos TLV (0-32)                 |
+| TLV FIELDS | Variável   | Campos TLV: ID(1) + LEN(1) + DATA(N)        |
+| CRC8       | 1 byte     | CRC8 SMBUS (polinómio 0x07)                 |
+| HMAC       | 32 bytes   | Opcional, gerido pelo módulo Security       |
+| SEQ        | 4 bytes    | Opcional, anti-replay, gerido pelo Security |
 
 ## 3.3 Tamanhos
 
-| Parâmetro         | Valor |
-|------------------|-------|
-| Tamanho mínimo   | 4 bytes (START + MSGID + COUNT + CRC8) |
-| Tamanho máximo   | 1024 bytes (serializado, sem HMAC/SEQ) |
-| Máximo de TLVs   | 32 por mensagem |
+| Parâmetro                 | Valor                                  |
+|---------------------------|----------------------------------------|
+| Tamanho mínimo            | 4 bytes (START + MSGID + COUNT + CRC8) |
+| Tamanho máximo            | 1024 bytes (serializado, sem HMAC/SEQ) |
+| Máximo de TLVs            | 32 por mensagem                        |
 | Máximo de payload por TLV | 32 bytes (normal) ou 128 bytes (vídeo) |
 
 ---
@@ -229,18 +229,18 @@ A tabela completa de IDs de campos TLV encontra-se em `shared/TLV_DEFINITIONS` �
 
 ## 9.1 Resumo dos Intervalos
 
-| Intervalo  | Domínio |
-|-----------|---------|
+| Intervalo | Domínio         |
+|-----------|-----------------|
 | 0x20-0x2F | GPS / Navegação |
-| 0x30-0x3F | IMU / Atitude |
-| 0x40-0x4F | Estado de Voo |
-| 0x50-0x5F | Energia |
-| 0x60-0x6F | Temperatura |
-| 0x70-0x7F | Sistema |
-| 0x80-0x8F | Atuadores |
-| 0x90-0x9F | Sensores |
-| 0xA1-0xAF | Failsafe |
-| 0xB0-0xBF | Vídeo |
+| 0x30-0x3F | IMU / Atitude   |
+| 0x40-0x4F | Estado de Voo   |
+| 0x50-0x5F | Energia         |
+| 0x60-0x6F | Temperatura     |
+| 0x70-0x7F | Sistema         |
+| 0x80-0x8F | Atuadores       |
+| 0x90-0x9F | Sensores        |
+| 0xA1-0xAF | Failsafe        |
+| 0xB0-0xBF | Vídeo           |
 
 ## 9.2 Validação
 
@@ -259,11 +259,11 @@ A tabela completa de IDs de comando encontra-se em `shared/TLV_DEFINITIONS` §11
 
 ## 10.1 Resumo dos Intervalos
 
-| Intervalo  | Tipo |
-|-----------|------|
-| 0xC0-0xCF | Comandos Básicos |
-| 0xD0-0xDF | Comandos de Controlo |
-| 0xE0-0xEF | Comandos Avançados |
+| Intervalo | Tipo                  |
+|-----------|-----------------------|
+| 0xC0-0xCF | Comandos Básicos      |
+| 0xD0-0xDF | Comandos de Controlo  |
+| 0xE0-0xEF | Comandos Avançados    |
 | 0xF0-0xFF | Comandos de Navegação |
 
 ---
@@ -274,13 +274,13 @@ A tabela completa de IDs de comando encontra-se em `shared/TLV_DEFINITIONS` §11
 
 Todos os dados numéricos são serializados em **little-endian** (byte menos significativo primeiro).
 
-| Tipo      | Tamanho | Exemplo (1.0f) |
-|-----------|---------|----------------|
+| Tipo      | Tamanho | Exemplo (1.0f)      |
+|-----------|---------|---------------------|
 | float     | 4 bytes | 0x00 0x00 0x80 0x3F |
-| int32_t   | 4 bytes | Conforme valor |
-| uint32_t  | 4 bytes | Conforme valor |
-| uint16_t  | 2 bytes | Conforme valor |
-| uint8_t   | 1 byte  | Conforme valor |
+| int32_t   | 4 bytes | Conforme valor      |
+| uint32_t  | 4 bytes | Conforme valor      |
+| uint16_t  | 2 bytes | Conforme valor      |
+| uint8_t   | 1 byte  | Conforme valor      |
 
 ## 11.2 Funções de Conversão
 
@@ -297,29 +297,29 @@ Todos os dados numéricos são serializados em **little-endian** (byte menos sig
 
 ## 12.1 TLVField
 
-| Campo  | Tipo        | Tamanho | Descrição |
-| ------ | ----------- | ------- | --------- |
-| `id`   | uint8_t     | 1 byte  | Identificador do campo |
-| `len`  | uint8_t     | 1 byte  | Comprimento do payload |
-| `data` | uint8_t[32] | 32 bytes max | Payload do campo |
+| Campo  | Tipo        | Tamanho      | Descrição              |
+| ------ | ----------- | ------------ | ---------------------- |
+| `id`   | uint8_t     | 1 byte       | Identificador do campo |
+| `len`  | uint8_t     | 1 byte       | Comprimento do payload |
+| `data` | uint8_t[32] | 32 bytes max | Payload do campo       |
 
 ## 12.2 TLVVideoField
 
-| Campo  | Tipo         | Tamanho | Descrição |
-| ------ | ------------ | ------- | --------- |
-| `id`   | uint8_t      | 1 byte  | Identificador do campo |
-| `len`  | uint8_t      | 1 byte  | Comprimento do payload |
-| `data` | uint8_t[128] | 128 bytes max | Payload de vídeo |
+| Campo  | Tipo         | Tamanho       | Descrição              |
+| ------ | ------------ | ------------- | ---------------------- |
+| `id`   | uint8_t      | 1 byte        | Identificador do campo |
+| `len`  | uint8_t      | 1 byte        | Comprimento do payload |
+| `data` | uint8_t[128] | 128 bytes max | Payload de vídeo       |
 
 ## 12.3 TLVMessage
 
-| Campo      | Tipo         | Tamanho       | Descrição |
-| ---------- | ------------ | ------------- | --------- |
-| `start`    | uint8_t      | 1 byte        | Byte de sincronização (0xAA) |
+| Campo      | Tipo         | Tamanho       | Descrição                         |
+| ---------- | ------------ | ------------- | --------------------------------- |
+| `start`    | uint8_t      | 1 byte        | Byte de sincronização (0xAA)      |
 | `msgID`    | uint8_t      | 1 byte        | Identificador do tipo de mensagem |
-| `tlvCount` | uint8_t      | 1 byte        | Número de campos TLV |
-| `tlvs`     | TLVField[32] | Até 32 campos | Campos TLV |
-| `crc8`     | uint8_t      | 1 byte        | CRC8 SMBUS |
+| `tlvCount` | uint8_t      | 1 byte        | Número de campos TLV              |
+| `tlvs`     | TLVField[32] | Até 32 campos | Campos TLV                        |
+| `crc8`     | uint8_t      | 1 byte        | CRC8 SMBUS                        |
 
 ---
 
@@ -327,15 +327,15 @@ Todos os dados numéricos são serializados em **little-endian** (byte menos sig
 
 ## 13.1 Estados
 
-| Estado                  | Descrição |
-|------------------------|-----------|
-| PARSER_WAIT_START      | Aguarda START_BYTE (0xAA) |
-| PARSER_WAIT_MSGID      | Aguarda e valida msgID |
-| PARSER_WAIT_TLVCOUNT   | Aguarda número de TLVs |
-| PARSER_WAIT_TLV_ID     | Aguarda ID do TLV atual |
+| Estado                 | Descrição                      |
+|------------------------|--------------------------------|
+| PARSER_WAIT_START      | Aguarda START_BYTE (0xAA)      |
+| PARSER_WAIT_MSGID      | Aguarda e valida msgID         |
+| PARSER_WAIT_TLVCOUNT   | Aguarda número de TLVs         |
+| PARSER_WAIT_TLV_ID     | Aguarda ID do TLV atual        |
 | PARSER_WAIT_TLV_LEN    | Aguarda comprimento do payload |
-| PARSER_WAIT_TLV_DATA   | Acumula bytes do payload |
-| PARSER_WAIT_CHECKSUM   | Aguarda CRC8 e valida |
+| PARSER_WAIT_TLV_DATA   | Acumula bytes do payload       |
+| PARSER_WAIT_CHECKSUM   | Aguarda CRC8 e valida          |
 
 ## 13.2 Fluxo
 
@@ -357,15 +357,15 @@ WAIT_START ──(0xAA)──→ WAIT_MSGID ──(msgID válido)──→ WAIT_
 
 ## 13.3 Códigos de Erro
 
-| Erro                       | Descrição |
-|---------------------------|-----------|
-| PARSER_OK                 | Sem erro |
-| PARSER_ERR_OVERFLOW       | Buffer interno excedido |
+| Erro                      | Descrição                       |
+|---------------------------|---------------------------------|
+| PARSER_OK                 | Sem erro                        |
+| PARSER_ERR_OVERFLOW       | Buffer interno excedido         |
 | PARSER_ERR_TIMEOUT        | Gap entre bytes excedeu timeout |
-| PARSER_ERR_INVALID_START  | START_BYTE ou msgID inválido |
-| PARSER_ERR_CHECKSUM       | CRC8 inválido |
-| PARSER_ERR_TLV_COUNT      | tlvCount > MAX_TLV_FIELDS |
-| PARSER_ERR_TLV_LEN        | LEN > MAX_TLV_VIDEO_DATA |
+| PARSER_ERR_INVALID_START  | START_BYTE ou msgID inválido    |
+| PARSER_ERR_CHECKSUM       | CRC8 inválido                   |
+| PARSER_ERR_TLV_COUNT      | tlvCount > MAX_TLV_FIELDS       |
+| PARSER_ERR_TLV_LEN        | LEN > MAX_TLV_VIDEO_DATA        |
 
 ## 13.4 Características de Segurança
 
@@ -397,14 +397,14 @@ size_t len = builder.build(MSG_TELEMETRY, buffer, sizeof(buffer));
 
 ## 14.2 Métodos Disponíveis
 
-| Método              | Tipo      | Descrição |
-|--------------------|-----------|-----------|
-| `addFloat()`       | float     | Campo de 4 bytes |
-| `addInt32()`       | int32_t   | Campo de 4 bytes |
-| `addUint32()`      | uint32_t  | Campo de 4 bytes |
-| `addUint16()`      | uint16_t  | Campo de 2 bytes |
-| `addUint8()`       | uint8_t   | Campo de 1 byte |
-| `addBytes()`       | uint8_t[] | Campo de N bytes |
+| Método             | Tipo      | Descrição                     |
+|--------------------|-----------|-------------------------------|
+| `addFloat()`       | float     | Campo de 4 bytes              |
+| `addInt32()`       | int32_t   | Campo de 4 bytes              |
+| `addUint32()`      | uint32_t  | Campo de 4 bytes              |
+| `addUint16()`      | uint16_t  | Campo de 2 bytes              |
+| `addUint8()`       | uint8_t   | Campo de 1 byte               |
+| `addBytes()`       | uint8_t[] | Campo de N bytes              |
 | `build()`          | —         | Serializa a mensagem completa |
 
 ---
@@ -435,19 +435,19 @@ size_t len = builder.build(MSG_TELEMETRY, buffer, sizeof(buffer));
 
 # 17. Segurança e Robustez
 
-| Mecanismo                  | Descrição |
-|---------------------------|-----------|
-| START_BYTE = 0xAA         | Padrão binário 10101010, facilmente distinguível de ruído |
-| CRC8 SMBUS (0x07)         | Deteta erros de 1-2 bits, rajadas ≤8 bits |
-| HMAC (32 bytes)           | Autenticação do remetente via módulo Security |
-| SEQ (4 bytes)             | Anti-replay, previne reenvio de mensagens capturadas |
-| CAN CRC nativo (17-bit)   | Proteção física contra erros de transmissão |
-| CAN ID + assinatura       | Identificação e autenticação no nível de transporte |
+| Mecanismo                 | Descrição                                                  |
+|---------------------------|------------------------------------------------------------|
+| START_BYTE = 0xAA         | Padrão binário 10101010, facilmente distinguível de ruído  |
+| CRC8 SMBUS (0x07)         | Deteta erros de 1-2 bits, rajadas ≤8 bits                  |
+| HMAC (32 bytes)           | Autenticação do remetente via módulo Security              |
+| SEQ (4 bytes)             | Anti-replay, previne reenvio de mensagens capturadas       |
+| CAN CRC nativo (17-bit)   | Proteção física contra erros de transmissão                |
+| CAN ID + assinatura       | Identificação e autenticação no nível de transporte        |
 | Intervalos de IDs seguros | 0x20-0x7F e 0xA1-0xFF evitam colisão com ASCII de controlo |
-| Limites máximos           | Previnem buffer overflow e alocações dinâmicas |
-| Parser com timeout        | Recupera automaticamente de streams corrompidos |
-| Reset automático em erro  | Qualquer erro reinicia o parser para a próxima mensagem |
-| Sem alocações dinâmicas   | Toda a memória é estática – comportamento determinístico |
+| Limites máximos           | Previnem buffer overflow e alocações dinâmicas             |
+| Parser com timeout        | Recupera automaticamente de streams corrompidos            |
+| Reset automático em erro  | Qualquer erro reinicia o parser para a próxima mensagem    |
+| Sem alocações dinâmicas   | Toda a memória é estática – comportamento determinístico   |
 
 ---
 
