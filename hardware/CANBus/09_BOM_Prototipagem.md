@@ -34,51 +34,51 @@ O protótipo inicial inclui:
 
 ## 3.1 Bus Operacional (não isolado)
 
-| # | Componente | Part Number | Qtd | Preço Unit | Total | Fornecedor |
-|---|-----------|-------------|-----|-----------|-------|-----------|
-| 1 | MCP2518FD-E/SL | MCP2518FD-E/SLVAO | 5 | ~$2.50 | ~$12.50 | Mouser/Digikey |
-| 2 | MCP2562FD-E/SN | MCP2562FD-E/SN | 4 | ~$1.00 | ~$4.00 | Mouser/Digikey |
-| 3 | Cristal 40 MHz | HC49S-40.000 | 5 | ~$0.50 | ~$2.50 | LCSC/Mouser |
-| 4 | Cap 22pF (cristal) | 0402/0603 C0G | 10 | ~$0.02 | ~$0.20 | LCSC |
-| 5 | Cap 100nF (decoupling) | 0402/0603 MLCC | 15 | ~$0.02 | ~$0.30 | LCSC |
-| 6 | Cap 10µF (bulk) | 0805 MLCC | 5 | ~$0.10 | ~$0.50 | LCSC |
-| 7 | Resistor 120Ω (term.) | 0402/0603 1% | 3 | ~$0.02 | ~$0.06 | LCSC |
-| 8 | Conector DB9 macho | DE-9 macho | 5 | ~$2.00 | ~$10.00 | Mouser |
-| | **Subtotal operacional** | | | | **~$30.06** | |
+| # | Componente               | Part Number       | Qtd | Preço Unit | Total       | Fornecedor     |
+|---|--------------------------|-------------------|-----|------------|-------------|----------------|
+| 1 | MCP2518FD-E/SL           | MCP2518FD-E/SLVAO | 5   | ~$2.50     | ~$12.50     | Mouser/Digikey |
+| 2 | MCP2562FD-E/SN           | MCP2562FD-E/SN    | 4   | ~$1.00     | ~$4.00      | Mouser/Digikey |
+| 3 | Cristal 40 MHz           | HC49S-40.000      | 5   | ~$0.50     | ~$2.50      | LCSC/Mouser    |
+| 4 | Cap 22pF (cristal)       | 0402/0603 C0G     | 10  | ~$0.02     | ~$0.20      | LCSC           |
+| 5 | Cap 100nF (decoupling)   | 0402/0603 MLCC    | 15  | ~$0.02     | ~$0.30      | LCSC           |
+| 6 | Cap 10µF (bulk)          | 0805 MLCC         | 5   | ~$0.10     | ~$0.50      | LCSC           |
+| 7 | Resistor 120Ω (term.)    | 0402/0603 1%      | 3   | ~$0.02     | ~$0.06      | LCSC           |
+| 8 | Conector DB9 macho       | DE-9 macho        | 5   | ~$2.00     | ~$10.00     | Mouser         |
+|   | **Subtotal operacional** |                   |     |            | **~$30.06** |                |
 
 ## 3.2 Bus Segurança (isolado)
 
-| # | Componente | Part Number | Qtd | Preço Unit | Total | Fornecedor |
-|---|-----------|-------------|-----|-----------|-------|-----------|
-| 9 | ISO1042DWR | ISO1042DWR | 2 | ~$5.28 | ~$10.56 | Digikey/Mouser |
-| 10 | B0505S-1WR3 | B0505S-1WR3 | 2 | ~$2.50 | ~$5.00 | LCSC/Mouser |
-| 11 | Cap 100nF (VCC1/VCC2) | 0402/0603 | 4 | ~$0.02 | ~$0.08 | LCSC |
-| 12 | Cap 10µF (bulk 5V iso) | 0805 | 2 | ~$0.10 | ~$0.20 | LCSC |
-| | **Subtotal isolamento** | | | | **~$15.84** | |
+| #  | Componente              | Part Number | Qtd | Preço Unit | Total       | Fornecedor     |
+|----|-------------------------|-------------|-----|------------|-------------|----------------|
+| 9  | ISO1042DWR              | ISO1042DWR  | 2   | ~$5.28     | ~$10.56     | Digikey/Mouser |
+| 10 | B0505S-1WR3             | B0505S-1WR3 | 2   | ~$2.50     | ~$5.00      | LCSC/Mouser    |
+| 11 | Cap 100nF (VCC1/VCC2)   | 0402/0603   | 4   | ~$0.02     | ~$0.08      | LCSC           |
+| 12 | Cap 10µF (bulk 5V iso)  | 0805        | 2   | ~$0.10     | ~$0.20      | LCSC           |
+|    | **Subtotal isolamento** |             |     |            | **~$15.84** |                |
 
 ## 3.3 Módulos de Desenvolvimento (alternativa ao BOM discreto)
 
-| # | Componente | Qtd | Preço Unit | Total | Notas |
-|---|-----------|-----|-----------|-------|-------|
-| 13 | LilyGo T-2Can-FD | 2 | ~$27.00 | ~$54.00 | Para ESP32-S e ESP32-A |
-| 14 | 2CH Isolated CAN FD HAT | 1 | ~$45.00 | ~$45.00 | Para RaspberryPi |
-| | **Subtotal módulos** | | | **~$99.00** | |
+| #  | Componente              | Qtd | Preço Unit | Total       | Notas                  |
+|----|-------------------------|-----|------------|-------------|------------------------|
+| 13 | LilyGo T-2Can-FD        | 2   | ~$27.00    | ~$54.00     | Para ESP32-S e ESP32-A |
+| 14 | 2CH Isolated CAN FD HAT | 1   | ~$45.00    | ~$45.00     | Para RaspberryPi       |
+|    | **Subtotal módulos**    |     |            | **~$99.00** |                        |
 
 ## 3.4 Ferramentas
 
-| # | Componente | Qtd | Preço Unit | Total | Notas |
-|---|-----------|-----|-----------|-------|-------|
-| 15 | PCAN-USB FD (IPEH-004022) | 1 | ~€298.00 | ~€298.00 | Debug CAN |
-| 16 | Adaptador M12→DB9 | 1 | ~$39.00 | ~$39.00 | Opcional |
-| | **Subtotal ferramentas** | | | **~€337.00** | |
+| #  | Componente                | Qtd | Preço Unit | Total        | Notas     |
+|----|---------------------------|-----|------------|--------------|-----------|
+| 15 | PCAN-USB FD (IPEH-004022) | 1   | ~€298.00   | ~€298.00     | Debug CAN |
+| 16 | Adaptador M12→DB9         | 1   | ~$39.00    | ~$39.00      | Opcional  |
+|    | **Subtotal ferramentas**  |     |            | **~€337.00** |           |
 
 ## 3.5 Cabos
 
-| # | Componente | Qtd | Preço Unit | Total | Notas |
-|---|-----------|-----|-----------|-------|-------|
-| 17 | Cabo CAN 120Ω industrial (5m) | 2 | ~$5.00 | ~$10.00 | Protótipo |
-| 18 | Cabo DB9 CAN (1m) | 3 | ~$10.00 | ~$30.00 | Debug |
-| | **Subtotal cabos** | | | **~$40.00** | |
+| #  | Componente                    | Qtd | Preço Unit | Total       | Notas     |
+|----|-------------------------------|-----|------------|-------------|-----------|
+| 17 | Cabo CAN 120Ω industrial (5m) | 2   | ~$5.00     | ~$10.00     | Protótipo |
+| 18 | Cabo DB9 CAN (1m)             | 3   | ~$10.00    | ~$30.00     | Debug     |
+|    | **Subtotal cabos**            |     |            | **~$40.00** |           |
 
 ---
 
@@ -86,38 +86,38 @@ O protótipo inicial inclui:
 
 ## 4.1 Cenário A: BOM Discreto (componentes separados)
 
-| Categoria | Custo |
-|-----------|-------|
-| Bus operacional (discreto) | ~$30 |
-| Bus segurança (isolado) | ~$16 |
-| **Total hardware** | **~$46** |
+| Categoria                  | Custo    |
+|----------------------------|----------|
+| Bus operacional (discreto) | ~$30     |
+| Bus segurança (isolado)    | ~$16     |
+| **Total hardware**         | **~$46** |
 
 ## 4.2 Cenário B: Módulos de Desenvolvimento
 
-| Categoria | Custo |
-|-----------|-------|
-| LilyGo T-2Can-FD (×2) | ~$54 |
-| 2CH Isolated CAN FD HAT | ~$45 |
-| **Total módulos** | **~$99** |
+| Categoria               | Custo    |
+|-------------------------|----------|
+| LilyGo T-2Can-FD (×2)   | ~$54     |
+| 2CH Isolated CAN FD HAT | ~$45     |
+| **Total módulos**       | **~$99** |
 
 ## 4.3 Cenário C: Combinado (recomendado para protótipo)
 
-| Categoria | Custo |
-|-----------|-------|
-| Módulos (RaspberryPi HAT + ESP32-S/A) | ~$99 |
-| ESP32-FS discreto (MCP2518FD + ISO1042) | ~$20 |
-| ESP32-FS_A discreto (MCP2518FD + ISO1042) | ~$15 |
-| Cabos | ~$40 |
-| Ferramenta (PCAN-USB FD) | ~€298 |
-| **Total protótipo** | **~$174 + €298** |
+| Categoria                                 | Custo            |
+|-------------------------------------------|------------------|
+| Módulos (RaspberryPi HAT + ESP32-S/A)     | ~$99             |
+| ESP32-FS discreto (MCP2518FD + ISO1042)   | ~$20             |
+| ESP32-FS_A discreto (MCP2518FD + ISO1042) | ~$15             |
+| Cabos                                     | ~$40             |
+| Ferramenta (PCAN-USB FD)                  | ~€298            |
+| **Total protótipo**                       | **~$174 + €298** |
 
 ## 4.4 Total Estimado (protótipo completo)
 
-| Item | Custo (USD) | Custo (EUR) |
-|------|------------|------------|
-| Hardware CAN Bus | ~$174 | ~€160 |
-| Ferramenta debug | — | ~€298 |
-| **TOTAL** | **~$174** | **~€458** |
+| Item             | Custo (USD) | Custo (EUR) |
+|------------------|-------------|-------------|
+| Hardware CAN Bus | ~$174       | ~€160       |
+| Ferramenta debug | —           | ~€298       |
+| **TOTAL**        | **~$174**   | **~€458**   |
 
 ---
 
@@ -125,30 +125,30 @@ O protótipo inicial inclui:
 
 ## 5.1 Componentes
 
-| Fornecedor | Tipo | Vantagem | Site |
-|-----------|------|----------|------|
-| Mouser | Distribuidor autorizado | Stock, rapidez, datasheets | mouser.com |
-| Digikey | Distribuidor autorizado | Stock, rapidez | digikey.com |
-| LCSC | Componentes | Preço baixo, envio China | lcsc.com |
-| Microchip Direct | Fabricante | Amostras grátis, preço direto | microchipdirect.com |
+| Fornecedor       | Tipo                    | Vantagem                      | Site                |
+|------------------|-------------------------|-------------------------------|---------------------|
+| Mouser           | Distribuidor autorizado | Stock, rapidez, datasheets    | mouser.com          |
+| Digikey          | Distribuidor autorizado | Stock, rapidez                | digikey.com         |
+| LCSC             | Componentes             | Preço baixo, envio China      | lcsc.com            |
+| Microchip Direct | Fabricante              | Amostras grátis, preço direto | microchipdirect.com |
 
 ## 5.2 Módulos e Ferramentas
 
-| Fornecedor | Tipo | Notas |
-|-----------|------|-------|
-| Amazon | Módulos | Rapidez, devolução fácil |
-| AliExpress | Módulos budget | Preço baixo, envio lento |
-| Waveshare | Módulos CAN | Boa qualidade |
-| Mikroe | Click boards | Bibliotecas incluídas |
-| PEAK-System | Ferramentas CAN | Gold standard |
+| Fornecedor  | Tipo            | Notas                    |
+|-------------|-----------------|--------------------------|
+| Amazon      | Módulos         | Rapidez, devolução fácil |
+| AliExpress  | Módulos budget  | Preço baixo, envio lento |
+| Waveshare   | Módulos CAN     | Boa qualidade            |
+| Mikroe      | Click boards    | Bibliotecas incluídas    |
+| PEAK-System | Ferramentas CAN | Gold standard            |
 
 ## 5.3 Cabos
 
-| Fornecedor | Tipo | Notas |
-|-----------|------|-------|
-| L-com | Cabos industriais | Barato, stock |
-| EDMO | Cabos aerospace | Gigaflight, Garmin approved |
-| Gigaflight | Cabos aerospace | Direto do fabricante |
+| Fornecedor | Tipo              | Notas                       |
+|------------|-------------------|-----------------------------|
+| L-com      | Cabos industriais | Barato, stock               |
+| EDMO       | Cabos aerospace   | Gigaflight, Garmin approved |
+| Gigaflight | Cabos aerospace   | Direto do fabricante        |
 
 ---
 
@@ -171,14 +171,14 @@ A Microchip oferece amostras grátis do MCP2518FD e MCP251863 através do Microc
 
 ## 6.3 Lead Times
 
-| Componente | Lead Time Típico |
-|-----------|-----------------|
-| MCP2518FD | Em stock (Mouser/Digikey) |
-| ISO1042 | 1-3 dias (Digikey) |
-| B0505S-1WR3 | 1-2 semanas (LCSC) |
-| PCAN-USB FD | Em stock (PEAK) |
-| LilyGo T-2Can-FD | 1-2 semanas (AliExpress) |
-| 2CH Isolated HAT | Em stock (Waveshare) |
+| Componente       | Lead Time Típico          |
+|------------------|---------------------------|
+| MCP2518FD        | Em stock (Mouser/Digikey) |
+| ISO1042          | 1-3 dias (Digikey)        |
+| B0505S-1WR3      | 1-2 semanas (LCSC)        |
+| PCAN-USB FD      | Em stock (PEAK)           |
+| LilyGo T-2Can-FD | 1-2 semanas (AliExpress)  |
+| 2CH Isolated HAT | Em stock (Waveshare)      |
 
 ---
 

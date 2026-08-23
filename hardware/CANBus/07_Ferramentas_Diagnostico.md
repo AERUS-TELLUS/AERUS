@@ -19,14 +19,14 @@ O presente documento detalha as ferramentas de diagnóstico CAN Bus candidatas a
 
 # 2. Requisitos
 
-| Requisito | Valor |
-|-----------|-------|
-| CAN FD | Sim — até 5+ Mbps |
-| CAN 2.0B | Sim — extended ID 29-bit |
-| SocketCAN (Linux) | Preferencial |
-| Isolamento galvânico | Preferencial |
-| Software | Aberto ou com boa documentação |
-| Preço | Conforme orçamento |
+| Requisito            | Valor                          |
+|----------------------|--------------------------------|
+| CAN FD               | Sim — até 5+ Mbps              |
+| CAN 2.0B             | Sim — extended ID 29-bit       |
+| SocketCAN (Linux)    | Preferencial                   |
+| Isolamento galvânico | Preferencial                   |
+| Software             | Aberto ou com boa documentação |
+| Preço                | Conforme orçamento             |
 
 ---
 
@@ -34,27 +34,28 @@ O presente documento detalha as ferramentas de diagnóstico CAN Bus candidatas a
 
 ## 3.1 Resumo
 
-| Campo | Valor |
-|-------|-------|
-| Fabricante | PEAK-System (HMS Networks) |
-| Part Number | IPEH-004022 (USB-A) / IPEH-004023 (USB-C) |
-| Interface | USB 2.0 (compatível 1.1/3.0) |
-| CAN | 1 canal |
-| CAN FD | Sim — até 12 Mbps |
-| CAN 2.0 | Sim — até 1 Mbps |
-| Transceiver | NXP TJA1044GT |
-| Isolamento | 500V galvânico |
-| Conector CAN | D-Sub 9 macho (CiA 106) |
-| Terminação | Configurável (solder jumper) |
-| Timestamp | 1 µs resolução |
-| FPGA | Sim (controller implementado em FPGA) |
-| Temperatura operação | -40 a +85°C |
-| Temperatura armazenamento | -40 a +100°C |
-| Software incluído | PCAN-View (monitor CAN) |
-| API | PCAN-Basic, PCAN-Developer 5 |
-| Drivers | Windows 10/11, Linux (SocketCAN) |
-| Preço | ~€298 (PEAK) / ~$368 (GridConnect) |
-| Datasheet | [PEAK Product Page](https://www.peak-system.com/products/hardware/external-pc-interfaces/pcan-usb-fd) |
+| Campo                     | Valor                                     |
+|---------------------------|-------------------------------------------|
+| Fabricante                | PEAK-System (HMS Networks)                |
+| Part Number               | IPEH-004022 (USB-A) / IPEH-004023 (USB-C) |
+| Interface                 | USB 2.0 (compatível 1.1/3.0)              |
+| CAN                       | 1 canal                                   |
+| CAN FD                    | Sim — até 12 Mbps                         |
+| CAN 2.0                   | Sim — até 1 Mbps                          |
+| Transceiver               | NXP TJA1044GT                             |
+| Isolamento                | 500V galvânico                            |
+| Conector CAN              | D-Sub 9 macho (CiA 106)                   |
+| Terminação                | Configurável (solder jumper)              |
+| Timestamp                 | 1 µs resolução                            |
+| FPGA                      | Sim (controller implementado em FPGA)     |
+| Temperatura operação      | -40 a +85°C                               |
+| Temperatura armazenamento | -40 a +100°C                              |
+| Software incluído         | PCAN-View (monitor CAN)                   |
+| API                       | PCAN-Basic, PCAN-Developer 5              |
+| Drivers                   | Windows 10/11, Linux (SocketCAN)          |
+| Preço                     | ~€298 (PEAK) / ~$368 (GridConnect)        |
+
+**Datasheet** --- [PEAK Product Page] --- (https://www.peak-system.com/products/hardware/external-pc-interfaces/pcan-usb-fd)
 
 ## 3.2 Características
 
@@ -103,14 +104,14 @@ canstat can0
 
 ## 3.4 Avaliação Aerus
 
-| Critério | Avaliação |
-|----------|-----------|
-| CAN FD | ✅ Até 12 Mbps |
-| Extended ID | ✅ 29-bit |
-| SocketCAN | ✅ nativo Linux |
-| Isolamento | ✅ 500V |
-| Qualidade | ✅ Gold standard |
-| Preço | ⚠️ ~€298 — elevado |
+| Critério    | Avaliação          |
+|-------------|--------------------|
+| CAN FD      | ✅ Até 12 Mbps     |
+| Extended ID | ✅ 29-bit          |
+| SocketCAN   | ✅ nativo Linux    |
+| Isolamento  | ✅ 500V            |
+| Qualidade   | ✅ Gold standard   |
+| Preço       | ⚠️ ~€298 — elevado |
 
 **Veredicto: RECOMENDADO como ferramenta principal de debug.**
 
@@ -120,18 +121,18 @@ canstat can0
 
 ## 4.1 Resumo
 
-| Campo | Valor |
-|-------|-------|
-| Fabricante | PEAK-System |
-| Canais | 2× CAN FD + 2× LIN |
-| Interface | USB 2.0 |
-| CAN FD | Sim — até 12 Mbps |
-| LIN | Sim — até 20 kbps |
-| Isolamento | 500V por canal CAN |
-| Conector | 2× D-Sub 9 |
-| Case | Alumínio robusto |
-| Temperatura | -40 a +85°C |
-| Preço | ~€500+ |
+| Campo       | Valor              |
+|-------------|--------------------|
+| Fabricante  | PEAK-System        |
+| Canais      | 2× CAN FD + 2× LIN |
+| Interface   | USB 2.0            |
+| CAN FD      | Sim — até 12 Mbps  |
+| LIN         | Sim — até 20 kbps  |
+| Isolamento  | 500V por canal CAN |
+| Conector    | 2× D-Sub 9         |
+| Case        | Alumínio robusto   |
+| Temperatura | -40 a +85°C        |
+| Preço       | ~€500+             |
 
 ## 4.2 Vantagens
 
@@ -151,27 +152,27 @@ canstat can0
 
 ## 5.1 Resumo (2xHS v2)
 
-| Campo | Valor |
-|-------|-------|
-| Fabricante | Kvaser AB |
-| Part Number | KV-01201-5 |
-| Canais | 2 |
-| CAN FD | Sim — até 8 Mbps |
-| Isolamento | Sim |
-| Interface | USB |
-| API | Kvaser CANlib |
-| Preço | ~$500+ |
+| Campo       | Valor            |
+|-------------|------------------|
+| Fabricante  | Kvaser AB        |
+| Part Number | KV-01201-5       |
+| Canais      | 2                |
+| CAN FD      | Sim — até 8 Mbps |
+| Isolamento  | Sim              |
+| Interface   | USB              |
+| API         | Kvaser CANlib    |
+| Preço       | ~$500+           |
 
 ## 5.2 Resumo (5xCAN)
 
-| Campo | Valor |
-|-------|-------|
-| Part Number | KV-01524-1 |
-| Canais | 5 |
-| CAN FD | Sim — até 8 Mbps |
-| MagiSync | Sim (sincronização automática) |
+| Campo         | Valor                           |
+|---------------|---------------------------------|
+| Part Number   | KV-01524-1                      |
+| Canais        | 5                               |
+| CAN FD        | Sim — até 8 Mbps                |
+| MagiSync      | Sim (sincronização automática)  |
 | t programming | Sim (programação em tempo real) |
-| Preço | ~$1,885 |
+| Preço         | ~$1,885                         |
 
 ## 5.3 Avaliação Aerus
 
@@ -186,14 +187,14 @@ canstat can0
 
 ## 6.1 Resumo
 
-| Campo | Valor |
-|-------|-------|
-| Fabricante | Waveshare |
-| Interface | USB |
-| CAN FD | Sim |
-| CAN 2.0 | Sim |
-| Isolamento | Não |
-| Preço | ~$81 |
+| Campo           | Valor          |
+|-----------------|----------------|
+| Fabricante      | Waveshare      |
+| Interface       | USB            |
+| CAN FD          | Sim            |
+| CAN 2.0         | Sim            |
+| Isolamento      | Não            |
+| Preço           | ~$81           |
 | Compatibilidade | Windows, Linux |
 
 ## 6.2 Avaliação
@@ -208,15 +209,15 @@ canstat can0
 
 ## 7.1 Resumo
 
-| Campo | Valor |
-|-------|-------|
-| Tipo | USB to CAN analyzer |
-| Canais | 2 |
-| CAN FD | Não (apenas CAN 2.0) |
-| Isolamento | Não |
-| Software | PC software incluído |
-| Preço | ~$17-90 (versão) |
-| Disponibilidade | AliExpress, eBay |
+| Campo           | Valor                |
+|-----------------|----------------------|
+| Tipo            | USB to CAN analyzer  |
+| Canais          | 2                    |
+| CAN FD          | Não (apenas CAN 2.0) |
+| Isolamento      | Não                  |
+| Software        | PC software incluído |
+| Preço           | ~$17-90 (versão)     |
+| Disponibilidade | AliExpress, eBay     |
 
 ## 7.2 Versões
 
@@ -237,15 +238,15 @@ canstat can0
 
 ## 8.1 Resumo
 
-| Campo | Valor |
-|-------|-------|
-| Fabricante | ZLG (Zhiyuan Electronics) |
-| Canais | 2 CAN FD |
-| CAN FD | Sim |
-| Isolamento | Sim |
-| Software | PCAN-Explorer compatível |
-| Preço | ~$218-361 |
-| Compatibilidade | Linux, Windows |
+| Campo           | Valor                     |
+|-----------------|---------------------------|
+| Fabricante      | ZLG (Zhiyuan Electronics) |
+| Canais          | 2 CAN FD                  |
+| CAN FD          | Sim                       |
+| Isolamento      | Sim                       |
+| Software        | PCAN-Explorer compatível  |
+| Preço           | ~$218-361                 |
+| Compatibilidade | Linux, Windows            |
 
 ## 8.2 Avaliação
 
@@ -258,25 +259,25 @@ canstat can0
 
 # 9. Comparação
 
-| Ferramenta | Canais | CAN FD | Isolado | SocketCAN | Preço | Recomendação |
-|-----------|--------|--------|---------|-----------|-------|-------------|
-| PCAN-USB FD | 1 | ✅ 12 Mbps | ✅ 500V | ✅ | ~€298 | **Recomendado** |
-| PCAN-USB Pro FD | 2+2LIN | ✅ 12 Mbps | ✅ 500V | ✅ | ~€500+ | Profissional |
-| Kvaser 2xHS v2 | 2 | ✅ 8 Mbps | ✅ | ⚠️ | ~$500+ | Alternativa |
-| Waveshare USB-CAN-FD | 1 | ✅ | ❌ | ⚠️ | ~$81 | Budget |
-| CANalyst-II | 2 | ❌ | ❌ | ❌ | ~$17-90 | Ultra-budget |
-| ZLG USBCANFD-100U | 2 | ✅ | ✅ | ⚠️ | ~$218 | Alternativa |
+| Ferramenta           | Canais | CAN FD     | Isolado | SocketCAN | Preço   | Recomendação    |
+|----------------------|--------|------------|---------|-----------|---------|-----------------|
+| PCAN-USB FD          | 1      | ✅ 12 Mbps | ✅ 500V | ✅        | ~€298   | **Recomendado** |
+| PCAN-USB Pro FD      | 2+2LIN | ✅ 12 Mbps | ✅ 500V | ✅        | ~€500+  | Profissional    |
+| Kvaser 2xHS v2       | 2      | ✅ 8 Mbps  | ✅      | ⚠️        | ~$500+  | Alternativa     |
+| Waveshare USB-CAN-FD | 1      | ✅         | ❌      | ⚠️        | ~$81    | Budget          |
+| CANalyst-II          | 2      | ❌         | ❌      | ❌        | ~$17-90 | Ultra-budget    |
+| ZLG USBCANFD-100U    | 2      | ✅         | ✅      | ⚠️        | ~$218   | Alternativa     |
 
 ---
 
 # 10. Recomendação Aerus
 
-| Uso | Ferramenta | Custo |
-|-----|-----------|-------|
-| Desenvolvimento principal | PCAN-USB FD | ~€298 |
-| Testes multi-bus | PCAN-USB Pro FD | ~€500+ |
-| Budget | Waveshare USB-CAN-FD | ~$81 |
-| Aprendizagem | CANalyst-II | ~$17-90 |
+| Uso                       | Ferramenta           | Custo   |
+|---------------------------|----------------------|---------|
+| Desenvolvimento principal | PCAN-USB FD          | ~€298   |
+| Testes multi-bus          | PCAN-USB Pro FD      | ~€500+  |
+| Budget                    | Waveshare USB-CAN-FD | ~$81    |
+| Aprendizagem              | CANalyst-II          | ~$17-90 |
 
 **Investimento mínimo recomendado:** 1× PCAN-USB FD (~€298)
 

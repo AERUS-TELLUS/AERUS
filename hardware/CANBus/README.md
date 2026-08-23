@@ -20,18 +20,18 @@ Inclui: componentes (controladores, transceivers, soluções isoladas), módulos
 
 # 2. Requisitos do Aerus
 
-| Requisito | Valor |
-|-----------|-------|
-| Protocolo | CAN FD (Flexible Data-rate) |
-| Payload máximo | 64 bytes |
-| Bitrate dados | Até 8 Mbps |
-| Bitrate arbitragem | 500 kbps – 1 Mbps |
-| CAN ID | Extended 29-bit |
-| Buses | 2 (operacional + segurança) |
-| Isolamento galvânico | Na barreira de segurança (ESP32-FS) |
-| Temperatura operacional | -40°C a +150°C |
-| Terminação | 120Ω em cada extremidade |
-| Impedância do cabo | 120Ω ±10% |
+| Requisito               | Valor                               |
+|-------------------------|-------------------------------------|
+| Protocolo               | CAN FD (Flexible Data-rate)         |
+| Payload máximo          | 64 bytes                            |
+| Bitrate dados           | Até 8 Mbps                          |
+| Bitrate arbitragem      | 500 kbps – 1 Mbps                   |
+| CAN ID                  | Extended 29-bit                     |
+| Buses                   | 2 (operacional + segurança)         |
+| Isolamento galvânico    | Na barreira de segurança (ESP32-FS) |
+| Temperatura operacional | -40°C a +150°C                      |
+| Terminação              | 120Ω em cada extremidade            |
+| Impedância do cabo      | 120Ω ±10%                           |
 
 ---
 

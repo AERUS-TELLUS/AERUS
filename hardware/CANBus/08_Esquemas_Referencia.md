@@ -58,7 +58,7 @@ O presente documento apresenta os circuitos de referência para implementação 
                     │         └GND    │
                     │                 │
                     │  TXCAN ────────┐│
-                    │  RXCAN ───────┘│
+                    │  RXCAN ────────┘│
                     └─────────────────┘
                              │
                     TXCAN/RXCAN
@@ -76,7 +76,7 @@ O presente documento apresenta os circuitos de referência para implementação 
                     │                 │
                     │  CANH ──┬─ 120Ω ┬── Bus CAN_H
                     │  CANL ──┤       └── Bus CAN_L
-                    └─────────┤
+                    └─────────┤───────┘
                               │
                          100nF─┴─GND
                          10µF ─┴─GND (no rail 5V)
@@ -84,17 +84,17 @@ O presente documento apresenta os circuitos de referência para implementação 
 
 ## 2.2 Componentes
 
-| Componente | Valor | Qtd | Notas |
-|-----------|-------|-----|-------|
-| MCP2518FD-E/SL | Controlador CAN FD | 1 | SOIC-14 |
-| MCP2562FD-E/SN | Transceiver CAN FD | 1 | SOIC-8 |
-| Cristal 40 MHz | Oscilador | 1 | HC49 ou SMD |
-| Capacitor 22pF | Load caps cristal | 2 | C0G/NP0 |
-| Capacitor 100nF | Decoupling | 3 | MLCC, 0402/0603 |
-| Capacitor 10µF | Bulk | 1 | Tantalo ou MLCC |
-| Resistor 120Ω | Terminação | 1 | 1%, 1/4W |
-| Conector DB9 | CAN bus | 1 | Macho |
-| Header SPI | Ligação ESP32 | 1 | 2×5 pinos |
+| Componente      | Valor              | Qtd | Notas           |
+|-----------------|--------------------|-----|-----------------|
+| MCP2518FD-E/SL  | Controlador CAN FD | 1   | SOIC-14         |
+| MCP2562FD-E/SN  | Transceiver CAN FD | 1   | SOIC-8          |
+| Cristal 40 MHz  | Oscilador          | 1   | HC49 ou SMD     |
+| Capacitor 22pF  | Load caps cristal  | 2   | C0G/NP0         |
+| Capacitor 100nF | Decoupling         | 3   | MLCC, 0402/0603 |
+| Capacitor 10µF  | Bulk               | 1   | Tantalo ou MLCC |
+| Resistor 120Ω   | Terminação         | 1   | 1%, 1/4W        |
+| Conector DB9    | CAN bus            | 1   | Macho           |
+| Header SPI      | Ligação ESP32      | 1   | 2×5 pinos       |
 
 ## 2.3 Notas de PCB
 
@@ -131,43 +131,43 @@ O presente documento apresenta os circuitos de referência para implementação 
               ┌──────────────┼──────────────┐
               │              │              │
               ▼              │              ▼
-   ┌──────────────────┐     │     ┌──────────────────┐
-   │   MCP2518FD #1   │     │     │   MCP2518FD #2   │
-   │  (Operacional)   │     │     │   (Segurança)    │
-   │                  │     │     │                  │
-   │  TXCAN ─────┐    │     │     │    ┌───── TXCAN  │
-   │  RXCAN ────┘│    │     │     │    │──── RXCAN   │
-   └─────────────┼────┘     │     └────┼─────────────┘
-                 │          │          │
-                 ▼          │          ▼
-   ┌──────────────────┐     │     ┌──────────────────┐
-   │   MCP2562FD      │     │     │    ISO1042       │
-   │  (Operacional)   │     │     │   (Isolado)      │
-   │                  │     │     │                  │
-   │  TXD ── TXCAN    │     │     │  TXD ── TXCAN    │
-   │  RXD ── RXCAN    │     │     │  RXD ── RXCAN    │
-   │  VDD ── 5V       │     │     │                  │
-   │  VIO ── 3.3V     │     │     │  VCC1 ── 3.3V    │
-   │                  │     │     │  GND1 ── GND     │
-   │  CANH ───────────┼──┐  │     │  VCC2 ── 5V ISO  │
-   │  CANL ───────────┼──┤  │     │  GND2 ── GND ISO │
-   └──────────────────┘  │  │     │                  │
-                         │  │     │  CANH ───────────┼──┐
-                    120Ω─┤  │     │  CANL ───────────┼──┤
-                         │  │     └──────────────────┘  │
-                         │  │                            │
-                    ┌────┴──┴──── Bus OPERACIONAL ───────┤
+   ┌──────────────────┐      │     ┌──────────────────┐
+   │   MCP2518FD #1   │      │     │   MCP2518FD #2   │
+   │  (Operacional)   │      │     │   (Segurança)    │
+   │                  │      │     │                  │
+   │  TXCAN ─────┐    │      │     │    ┌───── TXCAN  │
+   │  RXCAN ────┘│    │      │     │    │──── RXCAN   │
+   └─────────────┼────┘      │     └────┼─────────────┘
+                 │           │          │
+                 ▼           │          ▼
+   ┌──────────────────┐      │     ┌──────────────────┐
+   │   MCP2562FD      │      │     │    ISO1042       │
+   │  (Operacional)   │      │     │   (Isolado)      │
+   │                  │      │     │                  │
+   │  TXD ── TXCAN    │      │     │  TXD ── TXCAN    │
+   │  RXD ── RXCAN    │      │     │  RXD ── RXCAN    │
+   │  VDD ── 5V       │      │     │                  │
+   │  VIO ── 3.3V     │      │     │  VCC1 ── 3.3V    │
+   │                  │      │     │  GND1 ── GND     │
+   │  CANH ───────────┼──┐   │     │  VCC2 ── 5V ISO  │
+   │  CANL ───────────┼──┤   │     │  GND2 ── GND ISO │
+   └──────────────────┘  │   │     │                  │
+                         │   │     │  CANH ───────────┼───┐
+                    120Ω─┤   │     │  CANL ───────────┼───┤
+                         │   │     └──────────────────┘   │
+                         │   │                            │
+                    ┌────┴───┴──── Bus OPERACIONAL ───────┤
                     │                                     │
                     │  ┌──────────────────┐               │
                     │  │ Fonte Isolada    │               │
                     │  │ B0505S-1WR3      │               │
                     │  │                  │               │
-                    │  │ 5V ──┐    ┌── 5V ISO            │
-                    │  │      │DCDC│     │               │
-                    │  │ GND ─┘    └── GND ISO           │
+                    │  │5V ──┐      ┌── 5V ISO            │
+                    │  │     │ DCDC │     │               │
+                    │  │GND ─┘      └── GND ISO           │
                     │  └──────────────────┘               │
                     │                                     │
-                    │  ┌──── 120Ω ──── Bus SEGURANÇA ────┘
+                    │  ┌──── 120Ω ──── Bus SEGURANÇA ─────┘
                     │  │
                ┌────┴──┴────┐
                │  ESP32-FS_A│
@@ -178,14 +178,14 @@ O presente documento apresenta os circuitos de referência para implementação 
 
 ## 3.2 Componentes Adicionais
 
-| Componente | Valor | Qtd | Notas |
-|-----------|-------|-----|-------|
-| MCP2518FD-E/SL | Controlador CAN FD | 2 | Um por bus |
-| ISO1042DWR | Transceiver isolado | 1 | Bus segurança |
-| B0505S-1WR3 | Fonte DC-DC isolada | 1 | 5V→5V isolado |
-| Capacitor 100nF | Decoupling (lado MCU) | 2 | ISO1042 VCC1 |
-| Capacitor 100nF | Decoupling (lado bus) | 2 | ISO1042 VCC2 |
-| Capacitor 10µF | Bulk (lado bus) | 1 | Rail 5V isolado |
+| Componente      | Valor                 | Qtd | Notas           |
+|-----------------|-----------------------|-----|-----------------|
+| MCP2518FD-E/SL  | Controlador CAN FD    | 2   | Um por bus      |
+| ISO1042DWR      | Transceiver isolado   | 1   | Bus segurança   |
+| B0505S-1WR3     | Fonte DC-DC isolada   | 1   | 5V→5V isolado   |
+| Capacitor 100nF | Decoupling (lado MCU) | 2   | ISO1042 VCC1    |
+| Capacitor 100nF | Decoupling (lado bus) | 2   | ISO1042 VCC2    |
+| Capacitor 10µF  | Bulk (lado bus)       | 1   | Rail 5V isolado |
 
 ## 3.3 Notas Importantes
 

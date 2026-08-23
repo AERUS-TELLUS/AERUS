@@ -19,13 +19,13 @@ O presente documento detalha os conectores CAN Bus candidatos a implementação 
 
 # 2. Requisitos
 
-| Requisito | Valor |
-|-----------|-------|
-| Pinos | Mínimo 2 (CAN_H, CAN_L) + GND |
-| Impedância | 120Ω (compatível com cabo) |
-| Temperatura | -40 a +150°C |
-| Proteção | IP67 (para instalação final) |
-| Robustez | Resistente a vibração |
+| Requisito   | Valor                         |
+|-------------|-------------------------------|
+| Pinos       | Mínimo 2 (CAN_H, CAN_L) + GND |
+| Impedância  | 120Ω (compatível com cabo)    |
+| Temperatura | -40 a +150°C                  |
+| Proteção    | IP67 (para instalação final)  |
+| Robustez    | Resistente a vibração         |
 
 ---
 
@@ -33,28 +33,28 @@ O presente documento detalha os conectores CAN Bus candidatos a implementação 
 
 ## 3.1 Especificação
 
-| Campo | Valor |
-|-------|-------|
-| Norma | CiA 303-1 / CiA 106 |
-| Pinos | 9 (D-Sub macho na placa, fêmea no cabo) |
-| Impedância | 120Ω (quando com cabo blindado) |
-| Corrente por pin | 1A |
-| Temperatura | -25 a +85°C (típico) |
-| Preço | ~$1-5 (conector) |
+| Campo            | Valor                                   |
+|------------------|-----------------------------------------|
+| Norma            | CiA 303-1 / CiA 106                     |
+| Pinos            | 9 (D-Sub macho na placa, fêmea no cabo) |
+| Impedância       | 120Ω (quando com cabo blindado)         |
+| Corrente por pin | 1A                                      |
+| Temperatura      | -25 a +85°C (típico)                    |
+| Preço            | ~$1-5 (conector)                        |
 
 ## 3.2 Pinout CAN (CiA 303-1)
 
-| Pin | Sinal | Descrição |
-|-----|-------|-----------|
-| 1 | — | Não conectado / +5V opcional |
-| 2 | CAN_L | CAN Low |
-| 3 | CAN_GND | CAN Ground |
-| 4 | — | Não conectado |
-| 5 | — | Não conectado |
-| 6 | CAN_GND | CAN Ground (internamente ligado ao pin 3) |
-| 7 | CAN_H | CAN High |
-| 8 | — | Não conectado |
-| 9 | — | Não conectado |
+| Pin | Sinal   | Descrição                                 |
+|-----|---------|-------------------------------------------|
+| 1   | —       | Não conectado / +5V opcional              |
+| 2   | CAN_L   | CAN Low                                   |
+| 3   | CAN_GND | CAN Ground                                |
+| 4   | —       | Não conectado                             |
+| 5   | —       | Não conectado                             |
+| 6   | CAN_GND | CAN Ground (internamente ligado ao pin 3) |
+| 7   | CAN_H   | CAN High                                  |
+| 8   | —       | Não conectado                             |
+| 9   | —       | Não conectado                             |
 
 ## 3.3 Vantagens
 
@@ -80,26 +80,26 @@ O presente documento detalha os conectores CAN Bus candidatos a implementação 
 
 ## 4.1 Especificação
 
-| Campo | Valor |
-|-------|-------|
-| Norma | IEC 61076-2-101 |
-| Coding | A-coded (geral) |
-| Pinos | 5 |
-| IP | IP67 / IP68 |
-| Corrente por pin | 4A |
-| Tensão | Até 250V AC/DC |
-| Temperatura | -25 a +85°C (típico) |
-| Preço | ~$5-15 (conector + cabo) |
+| Campo | Valor                               |
+|------------------|--------------------------|
+| Norma            | IEC 61076-2-101          |
+| Coding           | A-coded (geral)          |
+| Pinos            | 5                        |
+| IP               | IP67 / IP68              |
+| Corrente por pin | 4A                       |
+| Tensão           | Até 250V AC/DC           |
+| Temperatura      | -25 a +85°C (típico)     |
+| Preço            | ~$5-15 (conector + cabo) |
 
 ## 4.2 Pinout CAN (A-coded 5-pin)
 
-| Pin | Sinal | Descrição |
-|-----|-------|-----------|
-| 1 | V+ | Alimentação (opcional) |
-| 2 | CAN_H | CAN High |
-| 3 | CAN_L | CAN Low |
-| 4 | GND | Ground |
-| 5 | SHIELD | Shield / Earth |
+| Pin | Sinal  | Descrição              |
+|-----|--------|------------------------|
+| 1   | V+     | Alimentação (opcional) |
+| 2   | CAN_H  | CAN High               |
+| 3   | CAN_L  | CAN Low                |
+| 4   | GND    | Ground                 |
+| 5   | SHIELD | Shield / Earth         |
 
 ## 4.3 Vantagens
 
@@ -125,14 +125,14 @@ O presente documento detalha os conectores CAN Bus candidatos a implementação 
 
 ## 5.1 Especificação
 
-| Campo | Valor |
-|-------|-------|
-| Tipo | Screw terminal block |
-| Pinos | 2 ou 3 (CAN_H, CAN_L, GND) |
-| Passo | 2.54mm / 3.5mm / 5.08mm |
-| Corrente | 5-10A |
-| Temperatura | -30 a +70°C (típico) |
-| Preço | ~$0.50-2 |
+| Campo       | Valor                      |
+|-------------|----------------------------|
+| Tipo        | Screw terminal block       |
+| Pinos       | 2 ou 3 (CAN_H, CAN_L, GND) |
+| Passo       | 2.54mm / 3.5mm / 5.08mm    |
+| Corrente    | 5-10A                      |
+| Temperatura | -30 a +70°C (típico)       |
+| Preço       | ~$0.50-2                   |
 
 ## 5.2 Vantagens
 
@@ -154,21 +154,21 @@ O presente documento detalha os conectores CAN Bus candidatos a implementação 
 
 # 6. Comparação
 
-| Conector | Pinos | IP | Vibração | Preço | Debug | Voo | Protótipo |
-|----------|-------|----|---------|-------|-------|-----|-----------|
-| DB9 (CiA 303-1) | 9 | Não | Média | ~$2-5 | ✅ | ⚠️ | ✅ |
-| M12 A-coded | 5 | IP67 | Alta | ~$5-15 | ⚠️ | ✅ | ⚠️ |
-| Terminais | 2-3 | Não | Baixa | ~$0.50 | ✅ | ❌ | ✅ |
+| Conector        | Pinos | IP   | Vibração | Preço  | Debug | Voo | Protótipo |
+|-----------------|-------|------|----------|--------|-------|-----|-----------|
+| DB9 (CiA 303-1) | 9     | Não  | Média    | ~$2-5  | ✅    | ⚠️  | ✅        |
+| M12 A-coded     | 5     | IP67 | Alta     | ~$5-15 | ⚠️    | ✅  | ⚠️        |
+| Terminais       | 2-3   | Não  | Baixa    | ~$0.50 | ✅    | ❌  | ✅        |
 
 ---
 
 # 7. Recomendação Aerus
 
-| Fase | Conector | Justificação |
-|------|---------|-------------|
-| Protótipo / Debug | DB9 (CiA 303-1) | Padrão CAN, fácil debug |
-| Instalação final | M12 A-coded 5-pin | IP67, robustez, vibração |
-| Adaptador | M12 → DB9 | Para ligar ferramentas de debug |
+| Fase              | Conector          | Justificação                    |
+|-------------------|-------------------|---------------------------------|
+| Protótipo / Debug | DB9 (CiA 303-1)   | Padrão CAN, fácil debug         |
+| Instalação final  | M12 A-coded 5-pin | IP67, robustez, vibração        |
+| Adaptador         | M12 → DB9         | Para ligar ferramentas de debug |
 
 ---
 
