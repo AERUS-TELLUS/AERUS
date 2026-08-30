@@ -1,0 +1,3 @@
+[submodule "shared/Bythos"]
+	path = shared/Bythos
+	url = https://github.com/Shega-PT/Bythos.git
