@@ -1,3 +1,4 @@
+# Python
 htmlcov/
 *.egg-info/
 *.egg
@@ -6,4 +7,54 @@ dist/
 .venv/
 venv/
 .env
+
+# Math (gitignored by design)
 math/
+
+# CMake
+.cmake/
+CMakeUserPresets.json
+
+# VS Code
+.vscode/
+
+# Local tools
+.tools/
+
+# OS
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Editors
+*.swp
+*.swo
+*~
+*.bak
+*.orig
+
+# Compiled artifacts
+*.o
+*.a
+*.so
+*.dylib
+*.dll
+*.exe
+
+# Logs and temps
+*.log
+*.tmp
+*.temp
+
+# Sensitive files
+*.pem
+*.key
+
+# Tool caches
+.cache/
+compile_commands.json
+
+# Core dumps
+core
+core.*
+vgcore.*

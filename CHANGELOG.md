@@ -14,7 +14,35 @@ Versões seguem [Semantic Versioning](https://semver.org/lang/pt-BR/).
 
 ---
 
-## [V0.0.5] — Em Desenvolvimento
+## [V0.0.6] — 2026-08-30
+
+**Data:** 2026-08-30
+
+**Autor:** ShegaPT
+
+### Adicionado
+
+- `setup.sh` — Script de configuração do ambiente de build
+- `build-requirements.txt` — Versões exatas das dependências (cmake, ninja)
+- `.envrc` — Configuração do direnv para ativação automática da venv
+- `.tools/bin/direnv` — Binário do direnv para ativação automática
+- `.gitkeep` — Em 20 diretórios vazios (ESP-A, ESP-FS, ESP-FS_A, ESP-S, Raspberry/math, certification, simulacao, tools, especificacoes/ACT, CER, CTL, ENE, GUI, IMP, NAV, OPS, SEC, SEN, TST, VAL)
+
+### Alterado
+
+- `.gitignore` — Expandido com padrões para OS, editores, compilados, logs, caches, core dumps
+- `.vscode/settings.json` — Adicionado `cmake.cmakePath` a apontar para `.venv/bin/cmake`
+- `shared/Bythos/.vscode/settings.json` — Corrigido caminho incorreto (adicionado `/AERUS`)
+- `README.md` — Secção de ambiente de build com instruções de venv, direnv e setup
+- `CHANGELOG.md` — Transferido de `docs/` para raiz do repositório
+
+### Submodule
+
+- `shared/Bythos/` — Registado como Git submodule (era repositório nested)
+
+---
+
+## [V0.0.5] — 2026-08-23
 
 **Data:** 2026-08-23
 
