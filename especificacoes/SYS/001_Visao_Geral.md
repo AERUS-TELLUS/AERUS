@@ -68,33 +68,31 @@ O sistema organiza-se em **Grupos Computacionais** independentes. Cada grupo pos
 
 A nomenclatura normativa, de utilização obrigatória em toda a documentação, código, esquemas e comentários, é a seguinte:
 
-| Designação normativa                          | Abreviatura admitida | Responsabilidade essencial                    |
-|-----------------------------------------------|----------------------|-----------------------------------------------|
-| Grupo Computacional Sensorial                 | GCSEN                | Aquisição, filtragem, normalização            |
-| Grupo Computacional Atuador                   | GCATU                | Validação e acionamento físico                |
-| Grupo Computacional de Controlo de Voo        | GCVOO                | Controlo e guiamento de voo                   |
-| Grupo Computacional de Navegação              | GCNAV                | Estimativa de posição, atitude e velocidade   |
-| Grupo Computacional de Missão                 | GCMIS                | Gestão e planeamento de missão                |
-| Grupo Computacional de Cálculo                | GCALC                | Serviço matemático especializado              |
-| Grupo Computacional FailSafe/Supervisão       | GCFS                 | Supervisão, segurança, modos de emergência    |
-| Grupo Computacional de Visão (GCV)            | GCV                  | Vídeo, visão, aceleração por IA               |
-| Grupo Computacional de Comunicação            | GCCOM                | Telemetria, telecomando, ligações RF          |
-| Master Geral (Cluster)                        | MG                   | Computador principal: 4x RP2350, 8 núcleos    |
-
-Não se utilizam, em caso algum, as designações antigas baseadas em nomes de plataformas comerciais ou siglas provisórias. A correspondência histórica encontra-se encerrada e não deve ser utilizada em novos documentos.
+| Designação normativa                    | Sigla | Responsabilidade essencial                  |
+|-----------------------------------------|-------|---------------------------------------------|
+| Grupo Computacional Sensorial           | GCS   | Aquisição, filtragem, normalização          |
+| Grupo Computacional Atuador             | GCA   | Validação e acionamento físico              |
+| Grupo Computacional de Controlo de Voo  | GCCV  | Controlo e guiamento de voo                 |
+| Grupo Computacional de Navegação        | GCN   | Estimativa de posição, atitude e velocidade |
+| Grupo Computacional de Missão           | GCM   | Gestão e planeamento de missão              |
+| Grupo Computacional de Cálculo          | GCCA  | Serviço matemático especializado            |
+| Grupo Computacional FailSafe/Supervisão | GCFS  | Supervisão, segurança, modos de emergência  |
+| Grupo Computacional de Visão            | GCV   | Vídeo, visão, aceleração por IA             |
+| Grupo Computacional de Comunicação      | GCCO  | Telemetria, telecomando, ligações RF        |
+| Master Geral (Cluster)                  | GCMG  | Computador principal: 4x RP2350, 8 núcleos  |
 
 Do ponto de vista físico, aplicam-se dois tipos de módulo:
 
 - **Módulo Menor**: baseado em RP2040. Destina-se a entrada/saída (I/O), aquisição, normalização, geração de PWM, máquinas de estado determinísticas e protocolos personalizados através de PIO.
-- **Módulo Maior / Master de Grupo**: baseado em RP2350, com preferência pela variante RP2350B/RP2354B (maior número de GPIO, PWM e entradas analógicas). Destina-se a mestres de grupo, processamento embarcado complexo, supervisão e tarefas de tempo real com FPU e instruções DSP.
+- **Módulo Maior e Master do Grupo**: baseado em RP2350, com preferência pela variante RP2350B/RP2354B (maior número de GPIO, PWM e entradas analógicas). Destina-se a mestres de grupo, processamento embarcado complexo, supervisão e tarefas de tempo real com FPU e instruções DSP.
 
 O **Master Geral** é um cluster constituído por 4x RP2350 ligados por uma rede interna dedicada designada por **INTERCONNECT FABRIC**. O conjunto disponibiliza 8 núcleos com especialização inicial:
 
 ```text
-RP2350 #1 — Núcleo 0: Controlo de Voo | Núcleo 1: Fusão de Sensores
-RP2350 #2 — Núcleo 0: Navegação       | Núcleo 1: Cálculo Matemático
-RP2350 #3 — Núcleo 0: Gestão de Missão| Núcleo 1: Planeamento
-RP2350 #4 — Núcleo 0: Supervisão/FailSafe | Núcleo 1: Diagnóstico
+RP2350 #1 — Núcleo 0: Controlo de Voo          | Núcleo 1: Fusão de Sensores
+RP2350 #2 — Núcleo 0: Navegação                | Núcleo 1: Cálculo Matemático
+RP2350 #3 — Núcleo 0: Gestão de Missão         | Núcleo 1: Planeamento
+RP2350 #4 — Núcleo 0: Supervisão/FailSecure    | Núcleo 1: Diagnóstico
 ```
 
 O **Grupo Computacional de Visão (GCV)** baseia-se no SoC NXP i.MX 8M Plus, referência MIMX8ML4DVNLZAB (CPU + GPU + ISP + NPU + motor de vídeo), com objetivo de 720p60 para processamento principal e 720p30 para a estação terrestre. Inclui ainda um Router RP2350 (admite-se RP2040 como alternativa de custo reduzido) para ligação à CAN-Principal e uma porta RJ45 privada para a placa de transmissão RF de 5.8 GHz.
@@ -103,17 +101,17 @@ O **Grupo Computacional de Visão (GCV)** baseia-se no SoC NXP i.MX 8M Plus, ref
 
 O sistema define **cinco redes** distintas, sem sobreposição de funções:
 
-1. **CAN-Intra-Grupo**: existe uma por grupo. Liga os Módulos Menores ao Master do grupo. Utiliza protocolo TLV.
-2. **CAN-Principal**: rede inter-masters. Liga entre si os Masters de Grupo, o Master Geral, o Router do GCV e o GCCOM.
-3. **CAN-FailSafe dedicada**: rede física e logicamente separada, ao serviço exclusivo do Grupo Computacional FailSafe/Supervisão para ordens de emergência, inibições e estados de segurança.
+1. **CAN-Intra-Grupo**: existe uma por grupo. Liga os Módulos Menores e Maiores ao Master do grupo. Utiliza protocolo TLV.
+2. **CAN-Principal**: rede inter-masters. Liga entre si os Masters de Grupo e o Master Geral.
+3. **CAN-FailSafe dedicada**: rede física e logicamente separada, ao serviço exclusivo do Grupo Computacional FailSafe para ordens de emergência, inibições e estados de segurança.
 4. **INTERCONNECT FABRIC intra-cluster**: rede interna dedicada do Master Geral (SPI dedicado / múltiplos SPI / DMA / PIO / memória partilhada, a fechar em HW). Utiliza mensagens IPC estruturadas com os campos SOURCE / DESTINO / NÚCLEO / TIPO / REQ_ID / TIMESTAMP / COMPRIMENTO / PAYLOAD / CRC. Tipos previstos: SENSOR_DATA, MATH_REQUEST, MATH_RESPONSE, NAVIGATION_REQUEST, NAVIGATION_RESPONSE, MISSION_REQUEST, MISSION_RESPONSE, HEALTH_STATUS, SYSTEM_STATUS, TIME_SYNC, FAULT, HEARTBEAT, entre outros.
-5. **RJ45-Privada com protocolo série RS** (RS-422/485, a confirmar): ligações ponto-a-ponto sempre que exista equipamento de radiofrequência (RF). Aplica-se em dois casos normativos: GCV ↔ placa TX RF 5.8 GHz (vídeo para a estação terrestre) e Master Geral ↔ placa RX 2.4 GHz / TX 868 MHz (telecomando e telemetria). Nunca se liga RF diretamente a barramentos partilhados.
+5. **RJ45-Privada com protocolo série RS422**: ligações ponto-a-ponto sempre que exista equipamento de radiofrequência (RF). Aplica-se em dois casos normativos: GCV ↔ placa TX RF 5.8 GHz (vídeo para a estação terrestre) e Master Geral ↔ placa RX 2.4 GHz / TX 868 MHz (telecomando e telemetria). Nunca se liga RF diretamente a barramentos partilhados.
 
 O detalhe de protocolos, formatos e gestão de filas encontra-se na série COM e é resumido em SYS-005.
 
 ## 3.5. Alimentação
 
-A aeronave disponibiliza externamente apenas três tensões:
+A aeronave disponibiliza apenas três tensões:
 
 ```text
 3.3 V / 5 V / 12 V
@@ -181,8 +179,8 @@ detalha as mensagens. SEC define as políticas de rejeição.
 |--------------------------------|--------------------------------|------------------|
 | Leitura de pitot e normalização| Grupo Computacional Sensorial  | CAN-Intra-Grupo  |
 | Decisão de leme                | GC de Controlo de Voo (no MG)  | INTERCONNECT FABRIC + CAN-Principal |
-| Ordem de emergência            | GC FailSafe/Supervisão         | CAN-FailSafe     |
-| Envio de vídeo para o solo     | GCV → TX 5.8 GHz               | RJ45-Privada (RS)|
+| Ordem de emergência            | GC FailSafe                    | CAN-FailSafe     |
+| Envio de vídeo para o solo     | GCV → TX 5.8 GHz               | RJ45 (RS422)     |
 
 ## Exemplo 3 — Diagrama de alto nível
 
@@ -209,18 +207,17 @@ detalha as mensagens. SEC define as políticas de rejeição.
 
 # 5. Interfaces Com Outros Documentos
 
-| Documento | Relação com SYS-001 |
-|-----------|---------------------|
-| SYS-002 Arquitetura Computacional | Detalhamento dos grupos e do cluster aqui resumidos |
-| SYS-003 Arquitetura de Software | Organização lógica do software de cada grupo |
-| SYS-004 Arquitetura de Hardware | Organização física, processadores e PCBs |
-| SYS-005 Fluxo Global de Informação | Detalhamento das 5 redes e dos fluxos |
-| SYS-006 Gestão de Estados | Propriedade e sincronização de estados |
-| SYS-007 Modos de Funcionamento | Sequência operacional global |
-| SYS-008 Gestão Temporal | Referências e sincronização temporal |
-| SYS-009 Arranque e Encerramento | Sequência de ativação e desligamento |
-| HW, SW, COM, MAT, SEC, OPS | Desenvolvimento técnico de cada domínio |
-| docs/Esquemas/Arquitetura-Computacional.md | Referência normativa de arquitetura que fundamenta SYS-001 a SYS-009 |
+| Documento                          | Relação com SYS-001                                 |
+|------------------------------------|-----------------------------------------------------|
+| SYS-002 Arquitetura Computacional  | Detalhamento dos grupos e do cluster aqui resumidos |
+| SYS-003 Arquitetura de Software    | Organização lógica do software de cada grupo        |
+| SYS-004 Arquitetura de Hardware    | Organização física, processadores e PCBs            |
+| SYS-005 Fluxo Global de Informação | Detalhamento das 5 redes e dos fluxos               |
+| SYS-006 Gestão de Estados          | Propriedade e sincronização de estados              |
+| SYS-007 Modos de Funcionamento     | Sequência operacional global                        |
+| SYS-008 Gestão Temporal            | Referências e sincronização temporal                |
+| SYS-009 Arranque e Encerramento    | Sequência de ativação e desligamento                |
+| HW, SW, COM, MAT, SEC, OPS         | Desenvolvimento técnico de cada domínio             |
 
 ---
 
