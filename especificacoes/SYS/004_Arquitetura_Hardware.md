@@ -4,7 +4,7 @@
 |-------------------|--------------------------|
 | **Código**        | SYS-004                  |
 | **Título**        | Arquitetura Hardware     |
-| **Versão**        | 1.0                      |
+| **Versão**        | 2.0                      |
 | **Estado**        | Em Desenvolvimento       |
 | **Autor**         | ShegaPT                  |
 | **Classificação** | Especificação de Sistema |
@@ -13,182 +13,227 @@
 
 # 1. Objetivo
 
-O presente documento define a arquitetura física do sistema Aerus, estabelecendo a organização dos grupos computacionais, a distribuição das responsabilidades de hardware e os princípios que regem a sua interação.
+O presente documento define a arquitetura física do sistema AERUS. Estabelecem-se a organização dos grupos computacionais em hardware, a distribuição de responsabilidades por placa, os processadores normativos, as redes físicas e os princípios de alimentação, isolamento e evolução.
 
-Este documento não especifica componentes eletrónicos, modelos de sensores, protocolos de comunicação ou esquemas elétricos, limitando-se à arquitetura física do sistema.
-
----
-
-# 2. Filosofia da Arquitetura
-
-A arquitetura hardware do Aerus baseia-se numa filosofia de processamento distribuído.
-
-Em vez de concentrar todas as responsabilidades numa única unidade computacional, estas são distribuídas por diferentes grupos computacionais especializados, permitindo:
-
-- reduzir a carga computacional individual;
-- aumentar a robustez do sistema;
-- simplificar a manutenção;
-- facilitar a escalabilidade;
-- aumentar a tolerância a falhas;
-- permitir evolução independente de cada domínio computacional.
-
-Cada grupo computacional possui responsabilidades claramente definidas, evitando sobreposição desnecessária de funções.
+Não se especificam modelos de sensores, valores de componentes, esquemas elétricos nem protocolos binários. Tais matérias pertencem às especificações HW (série) e COM.
 
 ---
 
-# 3. Grupos Computacionais
+# 2. Âmbito
 
-A arquitetura base do Aerus é constituída pelos seguintes grupos computacionais:
-
-- Grupo Computacional RaspberryPi;
-- Grupo Computacional ESP32-S;
-- Grupo Computacional ESP32-A;
-- Grupo Computacional ESP32-FS;
-- Grupo Computacional ESP32-FS_A.
-
-Cada grupo representa um domínio funcional do sistema e não um equipamento físico específico.
-
-O hardware utilizado para implementar cada grupo poderá evoluir ao longo do desenvolvimento do projeto sem alterar a arquitetura global do sistema.
+Aplica-se a todas as PCB do sistema: Módulos Menores, Masters de Grupo, Master Geral em cluster, placa(s) do Grupo de Visão, placas do Grupo de Comunicação e interligações (CAN, INTERCONNECT FABRIC, RJ45 privada, MIPI, alimentação).
 
 ---
 
-# 4. Escalabilidade
+# 3. Descrição Detalhada
 
-Cada grupo computacional poderá ser constituído por uma ou mais unidades computacionais.
+## 3.1. Filosofia da arquitetura
 
-A quantidade de unidades pertencentes a cada grupo dependerá das necessidades da aeronave, da carga computacional prevista e da distribuição física dos diferentes dispositivos.
+A arquitetura baseia-se em processamento distribuído: em vez de concentrar tudo numa unidade, distribuem-se responsabilidades por grupos especializados, com obtenção de:
 
-A arquitetura do Aerus não estabelece limites quanto ao número de unidades existentes em cada grupo computacional.
+- Redução da carga individual e determinismo local.
+- Robustez e tolerância a falhas por isolamento.
+- Manutenção simples e evolução independente por grupo.
+- Escalabilidade (uma ou várias unidades por grupo, sem alteração da arquitetura).
+
+Cada grupo executa localmente o processamento do seu domínio antes de publicar resultados; transmite-se informação tratada, não sinais elétricos em bruto.
+
+## 3.2. Processadores normativos
+
+### 3.2.1. RP2040 — Módulo Menor
+
+Características de referência: 2x Cortex-M0+ até 133 MHz; 264 KB SRAM; 30 GPIO; 4 analógicas; 2x UART, 2x SPI, 2x I2C; 16 PWM; USB; 8 máquinas PIO; DMA; baixo consumo.
+
+Utilização normativa: aquisição, filtragem, calibração, normalização, conversão de unidades, geração de PWM, SPI/I2C/UART, protocolos personalizados por PIO, pequenas máquinas de estado, monitorização local. Nunca como computador principal de voo.
+
+### 3.2.2. RP2350 — Módulo Maior / Master
+
+Características de referência: 2x Cortex-M33 até 150 MHz (alternativa 2x Hazard3 RISC-V); 520 KB SRAM; FPU; DSP; 16 DMA; 12 PIO; 2x UART/SPI/I2C; ADC; USB; TrustZone; SHA-256; Flash/PSRAM externa.
+
+Variantes e preferência:
+
+| Variante | Encapsulamento | GPIO / PWM / Analógicas | Nota |
+|----------|----------------|--------------------------|------|
+| RP2350A | QFN-60 7x7 mm | 30 / padrão / 4 | Uso geral compacto |
+| **RP2350B (preferida)** | QFN-80 10x10 mm | 48 / 24 / 8 | **Masters e cluster** |
+| RP2354A | como A + 2 MB Flash | idem A | Quando se pretenda Flash empilhada |
+| **RP2354B (preferida c/ Flash)** | como B + 2 MB Flash | idem B | **Masters e cluster quando aplicável** |
+
+A escolha definitiva depende de GPIO, Flash/PSRAM, disponibilidade e custo, mas para computadores principais considera-se prioritariamente RP2350B/RP2354B.
+
+### 3.2.3. NXP i.MX 8M Plus MIMX8ML4DVNLZAB — GCV
+
+SoC de visão com 4x Cortex-A53 + Cortex-M7 + GPU + ISP + NPU + motor de vídeo, interfaces de câmara (MIPI CSI), Ethernet e CAN-FD. Adequado a captura, ISP, composição GPU, inferência futura e codificação de vídeo. O dimensionamento de LPDDR, armazenamento (eMMC), PMIC, MIPI, impedâncias e layout DDR/MIPI processa-se estritamente a partir da documentação oficial da NXP.
+
+## 3.3. Grupos em hardware
+
+Cada grupo representa um domínio funcional; o hardware pode evoluir sem alteração da arquitetura, desde que se preservem responsabilidades e interfaces.
+
+- **Sensorial**: PCB(s) de sensores com RP2040 + Master RP2350; CAN-Intra-Grupo interna; saída para CAN-Principal.
+- **Atuador**: PCB(s) de atuadores com RP2040 + Master RP2350; idem.
+- **Missão/Navegação/Voo/Cálculo/Supervisão**: concentrados no Master Geral (ver 3.4); quando se justifique desagregação física, cada subgrupo utiliza Master RP2350 próprio ligado à CAN-Principal, sem alteração lógica.
+- **Visão (GCV)**: placa de visão (ver 3.6).
+- **Comunicação**: placa(s) com Master RP2350 (ou RP2040 para funções simples), transceptores CAN, interfaces série RS para RF e conectores RJ45 privados.
+- **FailSafe/Supervisão**: núcleo no Master Geral + rede CAN-FailSafe dedicada + capacidade de inibição; pode incluir PCB própria de supervisão com RP2350 quando a análise de segurança o exija.
+
+Cada PCB possui: identificação própria, versão de hardware, firmware próprio, interfaces documentadas, alimentação documentada, watchdog, diagnóstico e conetor(es) normalizados.
+
+## 3.4. Master Geral — cluster 4x RP2350
+
+PCB principal com 4x RP2350B/RP2354B e INTERCONNECT FABRIC dedicada (SPI dedicado/múltiplo, DMA, PIO, memória partilhada externa, links ponto-a-ponto ou combinação; a fechar). Objetivo: comunicação determinística de baixa latência entre nós independentes.
+
+```text
+            ┌──────── RP2350 #1 (Voo+Fusão)
+            │              │
+  CAN-Principal ───┼── FABRIC ──┼─── CAN-FailSafe (só Supervisão)
+            │              │
+            └──────── RP2350 #2 (Nav+Cálculo)
+                           │
+            ┌──────── RP2350 #3 (Missão+Planeamento)
+            │              │
+            └──────── RP2350 #4 (Supervisão+Diagnóstico)
+```
+
+Um núcleo assume supervisão do cluster: heartbeat dos nós, watchdog, latência, erros, bloqueio, reinicialização, sincronização temporal, integridade de mensagens e estado do cluster. Não se confunde supervisão de infraestrutura com computação de voo.
+
+Perante falha de 1x RP2350, aplica-se o definido em SYS-002/SYS-006/SEC (deteção, identificação, degradação controlada, registo).
+
+## 3.5. Redes físicas
+
+- **CAN-Intra-Grupo**: uma por grupo (Sensorial, Atuador, e demais quando desagregados). Barramento curto, transceptores CAN/CAN-FD conforme HW/COM, mensagens TLV.
+- **CAN-Principal**: espinha inter-masters (Masters de Grupo + Master Geral + Router GCV + Comunicação). Topologia, terminação, redundância e débito em HW/COM.
+- **CAN-FailSafe**: rede separada, exclusiva de segurança. Cablagem e conetores segregados; nunca partilha transceptor com tráfego normal.
+- **INTERCONNECT FABRIC**: rede intra-cluster na PCB do Master Geral. Requisitos: determinismo, baixa latência, CRC, timestamps, deteção de nó mudo.
+- **RJ45-Privada (RS)**: dois enlaces ponto-a-ponto, sempre que exista RF: (a) GCV ↔ placa TX 5.8 GHz; (b) Master Geral/GCCOM ↔ placa RX 2.4 GHz / TX 868 MHz. Protocolo série RS (RS-422/485 a confirmar), pinagem e blindagem em HW/COM. Nunca se ligam módulos RF a barramentos partilhados.
+
+## 3.6. Placa de visão (GCV)
+
+Solução modular preferencial para reduzir risco na primeira revisão:
+
+```text
+┌────────────────────────────────────────────┐
+│              VISION CARRIER PCB            │
+│                                            │
+│ Câmara FFC → MIPI CSI → Módulo de cálculo  │
+│                                            │
+│ Módulo: i.MX 8M Plus + LPDDR + Storage     │
+│         + PMIC/reguladores                 │
+│                                            │
+│ Router RP2350 (supervisão, watchdog,       │
+│   energia, CAN-Principal, telemetria)      │
+│                                            │
+│ Ethernet(rightsizing) │ CAN │ Energia │ RJ45-RS → TX 5.8 GHz │
+│ Conetor de sistema normalizado             │
+└────────────────────────────────────────────┘
+```
+
+Admite-se, como alternativa, i.MX direto na placa. A opção modular é preferida na primeira revisão.
+
+Arquitetura de alimentação do GCV:
+
+```text
+12 V / 5 V / 3.3 V (entradas)
+         │
+         ▼
+Gestão de energia (PMIC + reguladores)
+         ├──► rails do i.MX 8M Plus (sequenciamento NXP)
+         ├──► LPDDR
+         ├──► eMMC/armazenamento
+         ├──► MIPI/periféricos
+         └──► Router RP2350
+```
+
+O layout observa integralmente guias da NXP (largura, impedância, DDR, MIPI, desacoplamento, térmico).
+
+## 3.7. Alimentação geral
+
+Entradas externas por PCB: apenas 3.3 V, 5 V e 12 V. Rails internas geradas localmente:
+
+```text
+12 V ─┬─► cargas 12 V
+      └─► reguladores ─► rails intermédias
+
+ 5 V ─┬─► periféricos
+      └─► reguladores ─► núcleos, memórias
+
+3.3 V ─┬─► I/O
+       └─► reguladores ─► 1.8 V / 1.1 V / 0.8 V etc. conforme SoC/MCU
+```
+
+Aplica-se sequenciamento onde exigido (em especial i.MX), supervisão de rails, arranque monotónico e proteção. Redundância de alimentação, gestão térmica, EMC/EMI e certificação: ver HW/ENE/SEC.
+
+## 3.8. Aquisição, atuação e independência física
+
+- Todos os sensores ligam-se ao Grupo Sensorial; todos os atuadores, ao Grupo Atuador. Admite-se sensor dedicado a outro grupo apenas com justificação e sem alteração dos princípios.
+- Todos os atuadores fornecem realimentação (posição, velocidade, rotação, corrente, tensão, estado, telemetria), conforme a tecnologia.
+- Cada grupo possui o maior grau possível de independência: falhas internas de um grupo não impedem, sempre que possível, o funcionamento dos restantes.
+- A comunicação entre grupos processa-se por interfaces apropriadas (CAN/RJ45-RS/Fabric), definidas em HW/COM, nunca por sinais elétricos ad hoc.
+
+## 3.9. Família de PCB padronizadas (objetivo)
+
+```text
+COMPUTE-SENSOR   ─ RP2040 (+ Master RP2350)
+COMPUTE-ACTUATOR ─ RP2040/RP2350
+COMPUTE-NODE     ─ RP2350 (master genérico)
+COMPUTE-FLIGHT   ─ 4x RP2350 (Master Geral)
+COMPUTE-VISION   ─ i.MX 8M Plus + Router RP2350
+COMPUTE-COMM     ─ RP2040/RP2350 + CAN + RS/RJ45
+```
 
 ---
 
-# 5. Distribuição Funcional
+# 4. Exemplos
 
-Cada grupo computacional executa exclusivamente as funções pertencentes ao seu domínio de responsabilidade.
+## Exemplo 1 — Escolha de variante
 
-A distribuição das responsabilidades visa minimizar dependências entre diferentes grupos computacionais e otimizar a utilização dos recursos disponíveis.
+```text
+Master Sensorial com 34 GPIO necessários + 6 PWM + 5 analógicas
+→ RP2350A insuficiente (30 GPIO / 4 analógicas)
+→ decisão: RP2350B (48 GPIO / 8 analógicas / 24 PWM).
+Se necessária Flash empilhada → RP2354B.
+```
 
-Sempre que possível, cada grupo deverá efetuar localmente o processamento pertencente ao seu domínio antes de disponibilizar informação aos restantes grupos.
+## Exemplo 2 — Ligação de RF (correta)
 
----
+```text
+GCV ──RJ45 privada (par diferencial RS)──► Placa TX 5.8 GHz ──antena──► Solo
+MG/GCCOM ──RJ45 privada (RS)──► Placa RX 2.4 GHz (telecomando)
+MG/GCCOM ──RJ45 privada (RS)──► Placa TX 868 MHz (telemetria)
+Nunca: RF pendurada na CAN-Principal.
+```
 
-# 6. Aquisição de Dados
+## Exemplo 3 — Rails do GCV
 
-Todos os sensores da aeronave deverão ligar-se diretamente ao Grupo Computacional ESP32-S.
-
-Este grupo é responsável pela:
-
-- aquisição dos sinais;
-- conversão dos dados;
-- validação primária;
-- processamento inicial;
-- disponibilização da informação aos restantes grupos computacionais.
-
-A arquitetura admite a introdução futura de sensores dedicados a outros grupos computacionais, caso tal se revele necessário, sem alterar os princípios gerais definidos nesta especificação.
-
----
-
-# 7. Controlo dos Atuadores
-
-O controlo dos atuadores é efetuado pelo Grupo Computacional ESP32-A.
-
-Este grupo recebe os comandos provenientes do Grupo Computacional RaspberryPi, verifica a sua conformidade com os limites operacionais definidos para a aeronave e converte-os para os sinais físicos necessários ao acionamento dos respetivos atuadores.
-
-O Grupo Computacional ESP32-A é igualmente responsável pela monitorização contínua do estado dos atuadores.
+```text
+Entrada 12 V → buck → 5 V intermédio → PMIC NXP → 1.8/1.1/0.8 V (sequência NXP)
+Entrada 3.3 V → I/O e Router RP2350
+Monitorização por Router: PG, temperatura, corrente; watchdog do SoC.
+```
 
 ---
 
-# 8. Realimentação dos Atuadores
+# 5. Interfaces Com Outros Documentos
 
-Todos os atuadores deverão fornecer mecanismos de realimentação do seu estado.
-
-A informação devolvida poderá incluir, entre outros:
-
-- posição;
-- velocidade;
-- rotação;
-- corrente elétrica;
-- tensão;
-- estado interno;
-- telemetria disponível.
-
-O método utilizado para obtenção desta informação depende das características do respetivo atuador.
+| Documento | Relação |
+|-----------|---------|
+| SYS-002 | Grupos lógicos aqui materializados |
+| SYS-003 | Software que corre neste hardware |
+| SYS-005 | Redes físicas aqui listadas, detalhadas em mensagens |
+| HW-001/002/003/005/006/008 | Arquitetura, grupos, distribuição, energia, interfaces, redundância |
+| COM-001/008 | Barramentos e CAN |
+| SEC | Requisitos de segregação e inibição |
+| ENE | Dimensionamento energético |
 
 ---
 
-# 9. Processamento Principal
+# 6. Estado / Pontos Em Aberto
 
-O Grupo Computacional RaspberryPi constitui a unidade responsável pelo processamento principal do sistema durante o funcionamento normal.
+- **Estado**: Em Desenvolvimento.
+- **Pontos em aberto**:
+  - Topologia física da FABRIC e conetores/depopulação da PCB do cluster.
+  - Flash/PSRAM por RP2350, boot, redundância A/B.
+  - PMIC/LPDDR/eMMC finais do GCV e stack de layout.
+  - Confirmação RS-422/RS-485, débito, pinagem RJ45, blindagem.
+  - Redundância física de CAN (simples/dupla), terminação e encaminhamento.
+  - Térmica, EMC/EMI, vibração e ensaios.
 
-Entre as suas responsabilidades incluem-se:
-
-- coordenação global do sistema;
-- execução da missão;
-- navegação;
-- guiamento;
-- controlo superior;
-- gestão dos restantes grupos computacionais.
-
-O exercício destas responsabilidades ocorre sempre dentro dos limites impostos pela arquitetura de segurança do Aerus.
-
----
-
-# 10. Arquitetura de Segurança
-
-A segurança do sistema é assegurada pelo Grupo Computacional ESP32-FS.
-
-Este grupo executa continuamente funções próprias de monitorização e avaliação da segurança da aeronave.
-
-Sempre que considere existir risco suficiente para comprometer a segurança da operação, poderá assumir a autoridade prevista pela arquitetura do sistema.
-
-As responsabilidades específicas deste grupo encontram-se definidas nas especificações da área SEC.
-
----
-
-# 11. Controlo de Emergência
-
-O Grupo Computacional ESP32-FS_A constitui a unidade responsável pela execução dos comandos de emergência durante situações de FailSafe ou FailSecure.
-
-Este grupo permanece preparado para assumir o controlo dos atuadores críticos sempre que ativado pelo Grupo Computacional ESP32-FS.
-
-Durante o funcionamento normal, o Grupo Computacional ESP32-FS_A permanece inativo relativamente ao controlo da aeronave.
-
----
-
-# 12. Independência Física
-
-Cada grupo computacional deverá possuir o maior grau possível de independência relativamente aos restantes.
-
-Sempre que possível, falhas internas de um determinado grupo não deverão impedir o funcionamento dos restantes grupos computacionais.
-
-Esta independência constitui um dos princípios fundamentais da arquitetura hardware do Aerus.
-
----
-
-# 13. Interfaces Físicas
-
-A comunicação entre grupos computacionais é efetuada através de interfaces físicas apropriadas às necessidades do sistema.
-
-A arquitetura não impõe nesta especificação qualquer tecnologia específica de comunicação, sendo a sua definição efetuada nas respetivas especificações de hardware e comunicações.
-
----
-
-# 14. Evolução da Arquitetura
-
-A arquitetura hardware do Aerus foi concebida para permitir a evolução dos diferentes grupos computacionais de forma independente.
-
-Alterações ao hardware utilizado por um grupo computacional não deverão obrigar à reformulação da arquitetura global do sistema, desde que sejam mantidas as respetivas responsabilidades funcionais e interfaces definidas.
-
----
-
-# 15. Referências
-
-- SYS-001 — Visão Geral do Sistema
-- SYS-002 — Arquitetura Computacional
-- SYS-003 — Arquitetura Software
-- SYS-005 — Fluxo Global de Informação
-- HW — Especificações de Hardware
-- COM — Especificações de Comunicações
-- SEC — Especificações de Segurança
-- ACT — Especificações de Atuadores
-- SEN — Especificações de Sensores

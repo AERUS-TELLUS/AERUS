@@ -4,7 +4,7 @@
 |-------------------|----------------------------|
 | **Código**        | SYS-005                    |
 | **Título**        | Fluxo Global de Informação |
-| **Versão**        | 1.0                        |
+| **Versão**        | 2.0                        |
 | **Estado**        | Em Desenvolvimento         |
 | **Autor**         | ShegaPT                    |
 | **Classificação** | Especificação de Sistema   |
@@ -13,250 +13,162 @@
 
 # 1. Objetivo
 
-O presente documento define a forma como a informação circula entre os diferentes grupos computacionais do sistema Aerus.
+O presente documento define a forma como a informação circula entre os grupos computacionais do sistema AERUS. Estabelecem-se os princípios do fluxo de informação, a distribuição de dados, e a separação entre fluxos de informação, fluxos de controlo e fluxos de autoridade, com concretização nas cinco redes normativas.
 
-São estabelecidos os princípios gerais do fluxo de informação, a distribuição dos dados entre os diferentes domínios computacionais e a separação entre fluxos de informação, fluxos de controlo e fluxos de autoridade.
-
-Os detalhes relativos aos protocolos de comunicação, formatos de mensagens e mecanismos de transporte (CAN FD, TLV) encontram-se definidos nas respetivas especificações da área COM.
+Os formatos binários, temporizações e mecanismos de transporte (CAN, TLV, IPC, RS) encontram-se detalhados na série COM; o presente documento fixa o modelo global e as regras invioláveis.
 
 ---
 
-# 2. Princípios Gerais
+# 2. Âmbito
 
-O fluxo de informação do Aerus foi concebido segundo os seguintes princípios:
-
-- processamento distribuído;
-- minimização da latência;
-- redução de redundâncias desnecessárias;
-- paralelização do processamento;
-- independência entre domínios computacionais;
-- previsibilidade do fluxo dos dados;
-- elevada robustez perante falhas.
-
-Sempre que possível, a informação deverá ser processada no grupo computacional onde é inicialmente adquirida, sendo transmitidos apenas os resultados necessários aos restantes grupos.
+Aplica-se a todos os fluxos: aquisição sensorial, processamento no Master Geral, comando de atuadores, realimentação, segurança, estados, missão, visão e comunicação com o solo.
 
 ---
 
-# 3. Tipos de Fluxo
+# 3. Descrição Detalhada
 
-A arquitetura distingue três tipos fundamentais de fluxo.
+## 3.1. Princípios gerais
 
-## Fluxo de Informação
+- Processamento distribuído: a informação é tratada onde é adquirida; transmitem-se resultados, não sinais em bruto.
+- Minimização de latência e de redundância desnecessária.
+- Paralelização: cada domínio calcula localmente e em paralelo.
+- Independência entre domínios e previsibilidade do fluxo.
+- Robustez perante falhas por isolamento e por redes segregadas.
 
-Corresponde à circulação de dados entre grupos computacionais.
+## 3.2. Tipos de fluxo
 
-Inclui, entre outros:
+Distinguem-se três tipos, logicamente independentes:
 
-- dados de sensores;
-- resultados de cálculos;
-- estados internos;
-- feedback dos atuadores;
-- dados de navegação;
-- dados de missão.
+- **Fluxo de Informação**: dados (sensores, cálculos, estados internos, feedback, navegação, missão, vídeo/telemetria de saúde).
+- **Fluxo de Controlo**: comandos de funcionamento normal (voo, atuadores, operação, missão). Segue sempre a cadeia MISSÃO → VOO → ATUADOR.
+- **Fluxo de Autoridade**: decisões de segurança (pedidos/aceitação de FailSafe/FailSecure, ativação de emergência, inibição de grupos). Pertence ao FailSafe e circula, quando crítico, na CAN-FailSafe dedicada.
 
----
+## 3.3. As cinco redes (síntese normativa)
 
-## Fluxo de Controlo
+| # | Rede | Âmbito | Conteúdo típico |
+|---|------|--------|-----------------|
+| 1 | CAN-Intra-Grupo (uma por grupo) | Módulos Menores ↔ Master do grupo | TLV de aquisição/local, PWM lógico, diagnóstico |
+| 2 | CAN-Principal | Inter-masters (Masters + MG + Router GCV + Comunicação) | Dados normalizados, comandos validados, estados, telemetria |
+| 3 | CAN-FailSafe dedicada | FailSafe ↔ todos (via segregada) | Ordens de emergência, inibições, estados de segurança |
+| 4 | INTERCONNECT FABRIC | Intra-cluster (4x RP2350) | IPC: SENSOR_DATA, MATH_REQUEST/RESPONSE, NAVIGATION_*, MISSION_*, HEALTH_STATUS, SYSTEM_STATUS, TIME_SYNC, FAULT, HEARTBEAT |
+| 5 | RJ45-Privada (RS) | Ponto-a-ponto onde há RF | GCV↔TX 5.8 GHz (vídeo 720p30); MG/GCCOM↔RX 2.4 GHz + TX 868 MHz |
 
-Corresponde aos comandos utilizados para controlar o funcionamento normal da aeronave.
+Formato IPC intra-cluster (conceptual, a fechar em COM):
 
-Inclui:
+```text
+SOURCE | DESTINO | NÚCLEO | TIPO | REQ_ID | TIMESTAMP | COMPRIMENTO | PAYLOAD | CRC
+Tipos: SENSOR_DATA, ACTUATOR_DATA, MATH_REQUEST, MATH_RESPONSE,
+       NAVIGATION_REQUEST/RESPONSE, MISSION_REQUEST/RESPONSE,
+       HEALTH_STATUS, SYSTEM_STATUS, TIME_SYNC, FAULT, HEARTBEAT
+```
 
-- comandos de voo;
-- comandos dos atuadores;
-- comandos operacionais;
-- comandos de missão.
+O protocolo TLV (Tipo-Comprimento-Valor) utiliza-se nas CAN (intra e principal) para extensibilidade e validação; o detalhe consta de COM-002.
 
----
+## 3.4. Fluxo de aquisição e distribuição sensorial
 
-## Fluxo de Autoridade
+Todos os sensores ligam-se ao Grupo Sensorial. O Módulo Menor RP2040 executa aquisição, validação, conversão, normalização e cálculos primários; o Master do grupo agrega e publica.
 
-Corresponde às decisões relacionadas com a segurança da aeronave.
+Após processamento, a informação é distribuída, via CAN-Principal, em paralelo para: Controlo de Voo, Fusão, Navegação, Missão (por subscrição) e FailSafe. Cada consumidor calcula de forma independente; não existe dependência entre o cálculo normal e o cálculo de segurança.
 
-Inclui:
+Exemplo:
 
-- pedidos de entrada em FailSafe;
-- pedidos de entrada em FailSecure;
-- aceitação ou rejeição desses pedidos;
-- ativação do controlo de emergência;
-- inibição de grupos computacionais.
+```text
+Pitot → RP2040 (filtra, converte em m/s, timestamp)
+  → CAN-Intra (TLV) → Master Sensorial
+  → CAN-Principal → [Fusão | Navegação | FailSafe] em paralelo
+```
 
-O fluxo de autoridade é independente dos restantes fluxos.
+A frequência de aquisição (por periférico) é independente da frequência de comunicação entre grupos: o Master pode adquirir a alta cadência, acumular/processar e publicar à cadência da rede (ver SYS-008).
 
----
+## 3.5. Fluxo de processamento principal e comando
 
-# 4. Fluxo de Aquisição
+No Master Geral, o processamento normal segue o modelo de serviços IPC:
 
-Todos os sensores da aeronave comunicam diretamente com o Grupo Computacional ESP32-S.
+```text
+Fusão/Navegação ─SENSOR_DATA──► consumidores internos
+Missão ─MISSION_REQUEST──► Voo (solicitação, nunca ordem)
+Voo ─valida envelope──► comando validado ──CAN-Principal──► Master Atuador
+Navegação/Missão ─MATH_REQUEST──► Cálculo ─MATH_RESPONSE──► requerente
+```
 
-Este grupo é responsável por:
+O Grupo Atuador, antes da execução, valida comandos, verifica limites, converte para sinais físicos e gera PWM/GPIO. A realimentação (posição, corrente, estado) é publicada para Voo e FailSafe, o que permite confirmação, monitorização e deteção de anomalias.
 
-- aquisição;
-- validação;
-- conversão;
-- normalização;
-- cálculos primários;
-- preparação da informação.
+## 3.6. Fluxo de segurança e autoridade
 
-Após processamento inicial, a informação é distribuída para os restantes grupos computacionais que dela necessitem.
+O FailSafe executa permanentemente cálculos independentes com dados sensoriais, realimentação e estados do Master Geral. Qualquer domínio pode solicitar emergência; a decisão final é exclusiva do FailSafe (confirma/rejeita, comunica, regista, com intervalo mínimo de reavaliação).
 
----
+Quando é ativado FailSafe/FailSecure, o FailSafe pode, conforme SEC: inibir o Atuador normal via CAN-FailSafe, ativar controlo de emergência, transferir atuadores críticos e impor manobra. A seleção de ações depende da situação e das regras SEC.
 
-# 5. Fluxo de Informação dos Sensores
+## 3.7. Fluxo de estados e de emergência
 
-Após aquisição e processamento primário, o Grupo Computacional ESP32-S distribui a informação simultaneamente para:
+Os Masters e o Master Geral trocam estados operacionais (disponibilidade, degradação, perda de comunicação) sem alteração automática de autoridade. A alteração de autoridade só decorre de decisão de segurança explícita.
 
-- Grupo Computacional RaspberryPi;
-- Grupo Computacional ESP32-FS.
+## 3.8. Fluxo de visão e de comunicação externa
 
-Cada um destes grupos utiliza os dados recebidos de forma independente, efetuando os seus próprios cálculos e tomando decisões de acordo com as respetivas responsabilidades.
+- **Visão**: CÂMARA → MIPI CSI → i.MX (ISP/GPU, NPU futura, codificador) → 720p60 interno + 720p30 → RJ45-RS → placa TX 5.8 GHz → estação terrestre. Saúde e modo reportados pelo Router na CAN-Principal (HEALTH_STATUS). O tráfego de vídeo nunca circula na CAN.
+- **Comunicação**: Placa RX 2.4 GHz → RJ45-RS → GCCOM/MG → CAN-Principal como solicitação ao Voo. Telemetria inversa: MG → GCCOM → RJ45-RS → TX 868 MHz → solo. Separação estrita entre comunicação interna (CAN/Fabric) e externa (RF).
 
-Não existe dependência entre os cálculos efetuados por estes dois grupos computacionais.
+## 3.9. Paralelismo e escalabilidade
 
----
-
-# 6. Fluxo de Processamento Principal
-
-Durante o funcionamento normal da aeronave, o Grupo Computacional RaspberryPi constitui o principal consumidor da informação proveniente dos sensores.
-
-Com base nessa informação são executadas, entre outras, funções relacionadas com:
-
-- navegação;
-- guiamento;
-- gestão da missão;
-- controlo superior;
-- planeamento;
-- coordenação do sistema.
-
-Os comandos gerados são enviados diretamente ao Grupo Computacional ESP32-A.
+Os grupos calculam em paralelo e de forma local, o que reduz latência e dependências. O modelo admite novos sensores, atuadores, grupos e missões sem alteração dos princípios.
 
 ---
 
-# 7. Fluxo de Controlo dos Atuadores
+# 4. Exemplos
 
-O Grupo Computacional ESP32-A recebe os comandos provenientes do Grupo Computacional RaspberryPi.
+## Exemplo 1 — Comando de missão com validação
 
-Antes da execução dos comandos, este grupo deverá:
+```text
+[Missão] "subir para 120 m" ─MISSION_REQUEST─► [Voo]
+[Voo] verifica envelope (velocidade, atitude, energia)
+  ├─ OK → comando ─CAN-Principal─► [Atuador] → valida limites → PWM
+  └─ NOK → rejeita + motivo → [Missão] + evento para [Diagnóstico]
+```
 
-- validar os comandos recebidos;
-- verificar os limites operacionais;
-- efetuar as conversões necessárias;
-- gerar os sinais físicos adequados aos diferentes atuadores.
+## Exemplo 2 — TLV na CAN-Principal
 
-Após execução dos comandos, o Grupo Computacional ESP32-A obtém continuamente informação relativa ao estado dos respetivos atuadores.
+```text
+Quadro CAN (extrato lógico):
+  TLV #1: T=0x20 L=8 V=lat/lon compactadas (Navegação)
+  TLV #2: T=0x31 L=2 V=estado de atuador (Atuador)
+  Validação: CRC + gama + timestamp; rejeição silenciosa + contador em caso de erro.
+```
 
----
+## Exemplo 3 — IPC MATH entre núcleos
 
-# 8. Fluxo de Realimentação
+```text
+SOURCE=NAV DEST=CÁLC NÚCLEO=0/1 TIPO=MATH_REQUEST REQ_ID=77 TIMESTAMP=t
+PAYLOAD=matriz ... CRC=ok
+  ──► cálculo ──► MATH_RESPONSE REQ_ID=77 RESULTADO ... CRC
+Timeout → FAULT + estratégia degradada (ver SYS-008/SW).
+```
 
-A informação obtida através da realimentação dos atuadores é distribuída simultaneamente para:
+## Exemplo 4 — Fluxo de emergência
 
-- Grupo Computacional RaspberryPi;
-- Grupo Computacional ESP32-FS.
-
-Esta informação permite:
-
-- confirmar a correta execução dos comandos;
-- monitorizar o estado dos atuadores;
-- detetar anomalias;
-- apoiar os cálculos efetuados pelos diferentes grupos computacionais.
-
----
-
-# 9. Fluxo de Segurança
-
-O Grupo Computacional ESP32-FS executa permanentemente os seus próprios cálculos utilizando:
-
-- dados provenientes do Grupo Computacional ESP32-S;
-- informação de realimentação dos atuadores;
-- estados recebidos do Grupo Computacional RaspberryPi.
-
-Os cálculos efetuados pelo Grupo Computacional ESP32-FS são independentes dos realizados pelo Grupo Computacional RaspberryPi.
+```text
+[Fusão] deteta incoerência ─solicita─► [FailSafe]
+[FailSafe] confirma ─CAN-FailSafe─► inibe Atuador normal,
+  impõe picada suave + declara SYSTEM_STATUS=FAILSAFE,
+  informa GCCOM (telemetria) e GCV (modo seguro de vídeo).
+```
 
 ---
 
-# 10. Fluxo de Estados
+# 5. Interfaces Com Outros Documentos
 
-O Grupo Computacional RaspberryPi e o Grupo Computacional ESP32-FS trocam continuamente informação relativa ao estado global do sistema.
-
-Esta informação inclui, entre outros:
-
-- estado operacional;
-- estado da missão;
-- estado dos diferentes grupos computacionais;
-- alertas;
-- notificações.
-
-A troca de estados não implica qualquer alteração automática da autoridade de cada grupo computacional.
+| Documento | Relação |
+|-----------|---------|
+| SYS-002 | Grupos e autoridade cujos fluxos aqui se concretizam |
+| SYS-003 | Módulos/gestores que produzem/consomem estes fluxos |
+| SYS-006/007/008 | Estados, modos e tempos que condicionam fluxos |
+| COM-001/002/004/008/010 | Arquitetura, TLV, prioridades, CAN, integridade |
+| SEC | Regras de emergência e inibição |
+| SEN/ACT/MAT/NAV/CTL | Conteúdos transportados |
 
 ---
 
-# 11. Fluxo de Autoridade
+# 6. Estado / Pontos Em Aberto
 
-Durante o funcionamento normal, o Grupo Computacional RaspberryPi possui autoridade sobre o controlo operacional da missão.
+- **Estado**: Em Desenvolvimento.
+- **Pontos em aberto**: débitos e cargas por rede; IDs e dicionário TLV; formato IPC final e política de repetição; débito/pinagem da RJ45-RS; codec do 720p30; prioridades e contenção na CAN-Principal; redundância física de barramentos.
 
-Sempre que considere existir uma situação potencialmente perigosa, poderá solicitar ao Grupo Computacional ESP32-FS a ativação dos mecanismos de FailSafe ou FailSecure.
-
-O Grupo Computacional ESP32-FS analisa autonomamente essa solicitação.
-
-A decisão final pertence exclusivamente ao Grupo Computacional ESP32-FS.
-
-Da mesma forma, o Grupo Computacional ESP32-FS poderá iniciar autonomamente um procedimento de emergência sempre que os seus próprios cálculos assim o justifiquem.
-
----
-
-# 12. Fluxo de Emergência
-
-Quando é ativado um procedimento de FailSafe ou FailSecure, o Grupo Computacional ESP32-FS assume a autoridade prevista pela arquitetura de segurança.
-
-Durante este processo poderão ocorrer, entre outras, as seguintes ações:
-
-- inibição do Grupo Computacional ESP32-A;
-- ativação do Grupo Computacional ESP32-FS_A;
-- transferência do controlo dos atuadores críticos;
-- execução das manobras de emergência.
-
-A seleção das ações depende da situação operacional e das regras definidas nas especificações da área SEC.
-
----
-
-# 13. Paralelismo
-
-Os diferentes grupos computacionais executam os respetivos cálculos em paralelo.
-
-Sempre que possível, o processamento é efetuado localmente em cada domínio computacional.
-
-Esta abordagem permite:
-
-- reduzir tempos de resposta;
-- minimizar atrasos de comunicação;
-- aumentar a robustez do sistema;
-- reduzir dependências entre grupos computacionais.
-
----
-
-# 14. Escalabilidade
-
-O fluxo global de informação foi concebido para permitir a introdução futura de:
-
-- novos sensores;
-- novos atuadores;
-- novos grupos computacionais;
-- novos módulos de software;
-- novos tipos de missão.
-
-Estas evoluções não deverão alterar significativamente os princípios gerais definidos nesta especificação.
-
----
-
-# 15. Referências
-
-- SYS-002 — Arquitetura Computacional
-- SYS-003 — Arquitetura Software
-- SYS-004 — Arquitetura Hardware
-- SYS-006 — Gestão de Estados
-- COM — Especificações de Comunicações
-- SEC — Especificações de Segurança
-- SEN — Especificações de Sensores
-- ACT — Especificações de Atuadores
-- MAT — Especificações Matemáticas

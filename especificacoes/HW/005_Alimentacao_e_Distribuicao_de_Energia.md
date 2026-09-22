@@ -1,490 +1,222 @@
-# HW-005 — Alimentacao_e_Distribuicao_de_Energia
+# HW-005 — Alimentação e Distribuição de Energia
 
-| Campo             | Valor                                 |
-| ----------------- | ------------------------------------- |
-| **Código**        | HW-005                                |
-| **Título**        | Alimentação e Distribuição de Energia |
-| **Versão**        | 1.0                                   |
-| **Estado**        | Em Desenvolvimento                    |
-| **Autor**         | ShegaPT                               |
-| **Classificação** | Especificação de Hardware             |
+| Campo | Valor |
+| --- | --- |
+| **Código** | HW-005 |
+| **Título** | Alimentação e Distribuição de Energia |
+| **Versão** | 2.0 |
+| **Estado** | Em Desenvolvimento |
+| **Autor** | ShegaPT |
+| **Classificação** | Especificação de Hardware |
+| **Referência** | docs/Esquemas/Arquitetura-Computacional.md |
 
 ---
 
 # 1. Objetivo
 
-O presente documento define os princípios gerais da arquitetura de alimentação elétrica do Aerus.
+O presente documento define a arquitetura de alimentação do sistema AERUS-TELLUS: as três tensões de entrada disponíveis na aeronave (12 V, 5 V e 3,3 V), a árvore de distribuição até cada PCB da família, as conversões locais e os PMIC com sequenciamento NXP no Grupo Computacional de Visão (GCV) e no Master Geral, bem como monitorização, proteções, arranque, picos e relação com a segurança.
 
-A arquitetura de energia deverá fornecer alimentação adequada aos grupos computacionais e periféricos, mantendo a disponibilidade necessária para o funcionamento do sistema e permitindo a separação entre diferentes domínios quando necessário.
-
-A definição dos valores elétricos concretos será realizada durante o desenvolvimento detalhado do hardware.
+Explica por que razão 3,3/5/12 V são apenas o ponto de partida — nenhum SoC complexo se alimenta diretamente destas tensões sem regulação e sequência — e como evitar que uma falha de energia deite abaixo em simultâneo o domínio normal e o domínio de segurança.
 
 ---
 
-# 2. Princípio Geral
+# 2. Âmbito
 
-O sistema de alimentação deverá ser considerado como parte integrante da arquitetura de segurança e fiabilidade do Aerus.
+Abrange:
 
-A alimentação deverá ser dimensionada de acordo com as necessidades de:
+* barramento de entrada 12/5/3,3 V e separação potência/sinal;
+* árvore de distribuição por grupo e por PCB;
+* PMIC NXP e sequenciamento do i.MX 8M Plus (módulo do GCV) e rails do cluster 4 × RP2350;
+* monitorização (tensão, corrente, potência, temperatura), proteções e fusíveis eletrónicos;
+* gestão de consumo, picos, arranque e encerramento elétrico;
+* redundância e separação energética do FailSafe.
 
-* grupos computacionais;
-* sensores;
-* atuadores;
-* sistemas de comunicação;
-* periféricos;
-* sistemas auxiliares;
-* implementos, quando aplicável.
+Não abrange:
 
-A perda ou degradação da alimentação de um componente deverá ser considerada uma possível condição de falha do sistema.
+* fichas e níveis de sinal (ver HW-004);
+* protocolo e redes (ver HW-006);
+* sensores/atuadores concretos e a sua corrente nominal (ver SEN, ACT);
+* modelo de bateria e autonomia de missão (ver ENE, MAT).
 
 ---
 
-# 3. Arquitetura de Distribuição
+# 3. Descrição
 
-A arquitetura deverá distribuir a energia desde a fonte principal até aos diferentes consumidores.
+## 3.1 Entradas disponíveis: 12 V, 5 V e 3,3 V
 
-De forma conceptual:
+A aeronave disponibiliza externamente apenas três tensões de entrada para as PCB:
 
 ```text
-Fonte de Energia
-       │
-       ▼
-Distribuição Principal
-       │
-       ├── Grupo Computacional RaspberryPi
-       │
-       ├── Grupo Computacional ESP32-S
-       │
-       ├── Grupo Computacional ESP32-A
-       │
-       ├── Grupo Computacional ESP32-FS
-       │
-       ├── Grupo Computacional ESP32-FS_A
-       │
-       └── Periféricos
+12 V  → cargas de 12 V, ESC, rádios de potência, pré-regulação comutada
+5 V   → periféricos, transceptores, câmara, USB, pré-regulação local
+3,3 V → I/O digital, pequenos sensores, referência (nunca potência)
 ```
 
-A arquitetura final poderá possuir diferentes níveis de conversão e distribuição.
+Estas tensões alimentam fichas de entrada; **não** alimentam diretamente núcleos, DDR ou MIPI. Cada PCB gera localmente as tensões (rails) de que precisa.
+
+```text
+ENTRADAS DA PCB            CONVERSÕES LOCAIS           CARGAS
+12 V ─┬─► cargas 12 V      ┌─buck──► 5 V / 3,3 V ─────► I/O, transceptores
+      └─► reguladores ─────┼─buck──► 1,8 V / 1,1 V /──► núcleos RP2350, Flash, PSRAM
+5 V ──┬─► periféricos      │         0,9 V etc.        ► (conforme datasheet)
+      └─► reguladores ─────┼─LDO ──► rails limpas ────► ADC, referências, relógios
+3,3 V ┬─► I/O              └─PMIC ─► sequência NXP ───► i.MX + LPDDR + eMMC (GCV)
+      └─► reguladores
+```
+
+## 3.2 Árvore de distribuição por grupo
+
+```text
+Fonte principal da aeronave
+  │
+  ▼
+Distribuição principal (barramento 12/5/3,3 V + proteções por derivação)
+  │
+  ├── Grupo Sensorial (COMPUTE-SENSORIAL + Master COMPUTE-NODE)
+  ├── Grupo Atuador (COMPUTE-ACTUATOR + potência dos atuadores em derivação separada)
+  ├── Master Geral (COMPUTE-FLIGHT-CLUSTER + RJ45 para 2,4 GHz/868 MHz)
+  ├── GCV (COMPUTE-VISION-CARRIER + RJ45 para 5,8 GHz)
+  ├── Grupo Comunicação (COMPUTE-NODE + 3 × COMM-RF via RJ45)
+  ├── Nós FailSafe distribuídos (derivação protegida independente)
+  └── Periféricos (sensores, ESC, câmara — via nós, nunca direto da fonte)
+```
+
+Regras:
+
+* A potência dos atuadores (servos, ESC, motores) corre em derivação **separada** da eletrónica digital, com filtragem e ponto único de massa.
+* O domínio FailSafe possui derivação protegida independente, para que um curto no domínio normal não o arraste.
+* Cada derivação possui proteção dimensionada à carga (fusível, PTC ou eFuse + TVS + inversão de polaridade).
+
+| Consumidor | Fonte preferencial | Notas |
+| --- | --- | --- |
+| RP2040 e condicionamento local | 3,3 V → LDO local; 5 V como pré-regulação quando o nó incluir periféricos | Desacoplamento junto a cada circuito; plano de massa contínuo |
+| RP2350B/2354B (nós, Masters, Router, cluster) | 3,3 V → reguladores de núcleo segundo datasheet; Flash/PSRAM nos seus rails | Sequência simples mas verificada; brown-out detetado pelo supervisor |
+| COMPUTE-FLIGHT-CLUSTER (4 × RP2350 + Fabric + memórias) | 12 V → bucks de alto rendimento → rails de núcleo/I/O/memória; 5 V para transceptores | Dimensionar por pico simultâneo dos 4 circuitos + Fabric + RJ45 |
+| COMPUTE-VISION-CARRIER | 12/5/3,3 V → **PMIC NXP + reguladores** → rails do i.MX + LPDDR + eMMC + MIPI + Router | Sequenciamento NXP obrigatório; qualquer desvio invalida o arranque |
+| COMM-RF (3 placas) | Via RJ45 a partir do GCV/Master Geral, com proteção na origem e na placa | Interruptor de corte por placa para ensaio e poupança |
+| Sensores/atuadores | Via o nó que os serve, nunca direto do barramento | Permite corte, medição e diagnóstico por periférico |
+
+## 3.3 PMIC e sequenciamento NXP (GCV e cluster)
+
+O i.MX 8M Plus exige múltiplas tensões com ordem, rampas e temporizações precisas (núcleos, GPU, DDR, I/O, eMMC, MIPI). O mesmo vale, em menor grau, para LPDDR e memórias do cluster.
+
+```text
+12 V / 5 V / 3,3 V
+      │
+      ▼
+Gestão de energia (PMIC NXP + bucks/LDO + supervisão)
+      │
+      ├──► rails do i.MX 8M Plus (ordem NXP estrita)
+      ├──► LPDDR (rail dedicado, ruidoso separado do analógico)
+      ├──► eMMC / armazenamento
+      ├──► MIPI / câmara (com interruptor e sequência)
+      ├──► Router RP2350 (arranca primeiro; é quem liberta o SoC)
+      └──► Ethernet / CAN / RJ45 (com proteção)
+```
+
+Princípio de arranque energético:
+
+```text
+Router RP2350 sob tensão → verifica rails → liberta PMIC na ordem NXP
+  → aguarda POWER_OK → liberta reset do i.MX → SoC arranca
+  → Router assume watchdog e publica estado no CAN-Principal
+```
+
+O dimensionamento final (PMIC exato, indutores, condensadores, resistências de sequência, temporizações) é extraído da documentação oficial NXP para o MIMX8ML4DVNLZAB e validado em bancada. Sem essa validação, a carrier não é dada como pronta.
+
+## 3.4 Comparativo energético dos processadores
+
+| Aspeto | RP2040 | RP2350B/2354B | i.MX 8M Plus |
+| --- | --- | --- | --- |
+| Ordem de consumo | Dezenas de mW típicos por nó | Centenas de mW por circuito (depende de relógio e Fabric) | Unidades a dezenas de W com GPU/NPU/VPU ativas |
+| Regulação | LDO/buck simples | Bucks dedicados + LDO limpas para ADC/relógio | PMIC NXP + múltiplos bucks/LDO + sequência |
+| Sensibilidade | Baixa; brown-out detetado localmente | Média; relógio e PSRAM exigem rails estáveis | Elevada; DDR e MIPI exigem integridade e desacoplamento rigorosos |
+| Térmica | Dissipação na PCB chega | Dissipação + vias térmicas; cluster exige plano e, se necessário, dissipador | Dissipador + circulação de ar + monitorização contínua; Router pode cortar o SoC |
+
+## 3.5 Monitorização energética
+
+Cada nível monitoriza o que precisa para operar e para proteger:
+
+* **Nó (RP2040/RP2350):** tensão de entrada, estado do regulador local, corrente de periféricos quando relevante.
+* **Master Geral:** tensões de entrada, correntes por derivação principal, temperatura da PCB e dos reguladores, estado dos RJ45 (placa presente, consumo).
+* **GCV:** todas as rails do PMIC, corrente do SoC/LPDDR, temperatura do SoC (interna) e da carrier, estado da câmara e do armazenamento.
+* **Sistema:** potência instantânea, energia acumulada e estimativa de autonomia (com ENE/MAT); qualquer medida relevante para segurança é publicada no CAN-Principal e avaliada pelo FailSafe.
+
+## 3.6 Proteções, picos e separação potência/sinal
+
+Proteções por derivação: sobrecorrente, sobretensão, subtensão (brown-out), curto-circuito, inversão de polaridade, transientes/ESD e proteção térmica. Dimensionar por **pico** (arranque de motores, movimento simultâneo de superfícies, inicialização do GCV, TX simultâneo), não por média, com margem para que um pico legítimo nunca reinicie os domínios digitais.
+
+Separação potência/sinal: feixes distintos, filtragem LC/ferrite na fronteira, massa de potência e massa de sinal unidas num único ponto por baía, sem laços. A comutação dos bucks é afastada de ADC, relógios, MIPI e DDR.
+
+## 3.7 Arranque e encerramento elétricos
+
+Arranque: as tensões estabilizam antes de qualquer firmware se declarar pronto; o Router do GCV e o supervisor do cluster são os primeiros a viver e os últimos a autorizar comando. Encerramento: superfícies e motores em condição segura, escrita e sincronização do armazenamento do GCV, e só depois corte — sequência funcional em SYS, execução elétrica aqui.
 
 ---
 
-# 4. Fonte Principal
+# 4. Exemplos
 
-A aeronave deverá possuir uma fonte principal de energia adequada à operação do sistema.
+## Exemplo 1 — Pico simultâneo
 
-A fonte poderá alimentar diretamente ou através de sistemas de conversão os diferentes domínios da aeronave.
+```text
+Arranque: GCV a codificar + 4 superfícies em movimento + TX 5,8 GHz no máximo
+  → corrente de pico = soma dos picos, não das médias
+  → bucks do cluster e da carrier dimensionados com margem + monitorização
+  → se a margem for violada, o FailSafe limita TX ou adia movimento não crítico
+```
 
-A seleção da fonte dependerá da configuração da aeronave e das necessidades energéticas dos seus sistemas.
+## Exemplo 2 — Curto no domínio normal
 
-Os parâmetros concretos da fonte não são definidos neste documento.
+```text
+Curto numa derivação do Grupo Atuador
+  → eFuse da derivação corta em µs/ms; barramento principal intacto
+  → FailSafe (derivação independente) continua a avaliar e publica evento
+  → Missão degrada ou aborta conforme criticidade; registo em R1
+```
 
----
+## Exemplo 3 — Sequência do GCV
 
-# 5. Conversão de Energia
-
-Quando a tensão ou características elétricas da fonte principal não forem diretamente compatíveis com um consumidor, deverá ser utilizado um sistema de conversão apropriado.
-
-Os sistemas de conversão poderão ser utilizados para fornecer:
-
-* tensão adequada;
-* corrente adequada;
-* estabilidade;
-* isolamento;
-* proteção;
-* distribuição específica por domínio.
-
-Cada conversor deverá ser dimensionado de acordo com a carga associada.
-
----
-
-# 6. Distribuição por Domínio
-
-Sempre que necessário, a alimentação deverá ser distribuída por diferentes domínios de forma independente.
-
-A arquitetura deverá evitar que uma falha localizada provoque desnecessariamente a perda simultânea de sistemas que não necessitam de partilhar a mesma alimentação.
-
-A necessidade de separação será determinada de acordo com:
-
-* função;
-* criticidade;
-* consumo;
-* segurança;
-* características dos equipamentos.
+```text
+12 V presente → Router vivo → PMIC executa ordem NXP → LPDDR → núcleos → I/O
+  → POWER_OK → reset libertado → i.MX arranca → MIPI e eMMC ligados
+  → qualquer rail fora de tolerância = arranque abortado + diagnóstico
+```
 
 ---
 
-# 7. Alimentação do RaspberryPi
+# 5. Interfaces
 
-O Grupo Computacional RaspberryPi deverá possuir uma alimentação adequada às necessidades do hardware utilizado.
-
-Caso o grupo seja constituído por vários elementos, cada elemento deverá possuir alimentação compatível com as suas características.
-
-A arquitetura deverá permitir que a alimentação do RaspberryPi seja monitorizada sempre que essa informação seja relevante para a operação ou segurança.
-
----
-
-# 8. Alimentação do ESP32-S
-
-Os elementos pertencentes ao Grupo Computacional ESP32-S deverão possuir alimentação adequada aos microcontroladores e sensores associados.
-
-Quando existirem vários elementos, a distribuição de energia poderá ser feita de forma distribuída.
-
-A arquitetura deverá considerar o consumo adicional dos sensores associados a cada elemento.
-
-A perda de alimentação de um elemento ESP32-S não deverá ser automaticamente considerada equivalente à perda de todos os elementos do grupo.
+| Interface | Origem → Destino | Detalhe |
+| --- | --- | --- |
+| Barramento 12/5/3,3 V | Fonte → distribuição principal → cada PCB | Bitolas, proteções, fichas; ver também HW-004 |
+| Rails locais RP2040/RP2350 | Reguladores de cada PCB → núcleos/I/O/memórias | Documentação oficial do silício |
+| Rails PMIC NXP | PMIC → i.MX + LPDDR + eMMC + MIPI + Router | Documentação NXP do MIMX8ML4DVNLZAB |
+| RJ45 com energia | GCV/Master Geral → COMM-RF | Corte e medição por placa; ver HW-004/HW-006 |
+| Telemetria de energia | Monitores → CAN-Principal → FailSafe/Missão | Grandezas, períodos e limites em COM/SEC |
 
 ---
 
-# 9. Alimentação do ESP32-A
+# 6. Pontos em aberto
 
-Os elementos ESP32-A deverão possuir alimentação adequada ao processamento e às interfaces utilizadas para controlo dos atuadores.
-
-A alimentação dos próprios elementos computacionais deverá ser distinguida, quando necessário, da alimentação de potência dos atuadores.
-
-A arquitetura não deverá assumir que um microcontrolador pode fornecer diretamente a energia necessária a um atuador.
-
-Quando necessário, deverá existir uma etapa de potência apropriada entre o elemento computacional e o atuador.
-
----
-
-# 10. Alimentação do ESP32-FS
-
-A alimentação do Grupo Computacional ESP32-FS deverá ser projetada de modo a preservar a sua capacidade de executar as funções de segurança.
-
-A arquitetura deverá considerar a possibilidade de falhas ou perturbações na alimentação dos sistemas de operação normal.
-
-Sempre que tecnicamente necessário, o domínio de segurança deverá possuir condições de alimentação que reduzam a probabilidade de uma falha comum afetar simultaneamente o domínio normal e o domínio de segurança.
+| # | Ponto em aberto | Resolução |
+| --- | --- | --- |
+| 1 | PMIC NXP exato, indutores, condensadores, sequência e temporizações para o MIMX8ML4DVNLZAB | Guia NXP + projeto da carrier |
+| 2 | Rails e sequência do cluster (núcleos, Flash/PSRAM, Fabric, transceptores) e consumos por modo | Datasheets + medição em bancada |
+| 3 | Curvas de proteção por derivação (fusível/eFuse/TVS) e seletividade entre derivações | Projeto + ensaio de curto |
+| 4 | Orçamento de potência por modo (voo, missão, visão, TX máximo, emergência) e impacto na autonomia | ENE + MAT + medição |
+| 5 | Solução térmica da baía central (dissipadores, ar, limites de alarme/corte) | Ensaio térmico |
+| 6 | Modelo de bateria, química, capacidade e conetores da fonte principal | ENE + projeto da célula |
 
 ---
 
-# 11. Alimentação do ESP32-FS_A
-
-O Grupo Computacional ESP32-FS_A deverá possuir alimentação suficiente para executar as funções mínimas de atuação necessárias durante uma situação de emergência.
-
-A disponibilidade energética do ESP32-FS_A deverá ser considerada conjuntamente com a disponibilidade do ESP32-FS.
-
-A arquitetura deverá evitar uma dependência energética desnecessária que impeça o domínio de segurança de executar uma resposta quando esta for necessária.
-
----
-
-# 12. Alimentação dos Atuadores
-
-Os atuadores poderão possuir necessidades energéticas significativamente superiores às dos elementos computacionais.
-
-A alimentação dos atuadores deverá, portanto, ser dimensionada independentemente das necessidades elétricas dos microcontroladores.
-
-Deverão ser considerados:
-
-* corrente nominal;
-* corrente de arranque;
-* picos de consumo;
-* carga mecânica;
-* duração da operação;
-* número de atuadores ativos simultaneamente.
-
-Os valores concretos serão definidos em `ACT/` e na especificação elétrica detalhada.
-
----
-
-# 13. Alimentação dos Sensores
-
-Os sensores deverão receber alimentação compatível com as suas especificações.
-
-A alimentação dos sensores deverá considerar:
-
-* tensão;
-* corrente;
-* estabilidade;
-* ruído;
-* tempo de inicialização;
-* comportamento durante perda de alimentação.
-
-Quando vários sensores partilharem uma alimentação, deverá ser avaliado o impacto que uma falha nessa alimentação poderá provocar.
-
----
-
-# 14. Monitorização Energética
-
-Sempre que tecnicamente necessário, o Aerus deverá possuir capacidade de monitorizar parâmetros relevantes da alimentação.
-
-Poderão ser monitorizados, conforme aplicável:
-
-* tensão;
-* corrente;
-* potência;
-* consumo acumulado;
-* estado da fonte;
-* estado dos conversores;
-* temperatura;
-* outras grandezas relevantes.
-
-Os valores medidos poderão ser utilizados pelo sistema de controlo e pelo domínio de segurança.
-
----
-
-# 15. Energia e Massa da Aeronave
-
-A arquitetura energética deverá considerar que a fonte de energia constitui parte da massa total da aeronave.
-
-O consumo energético durante a missão poderá alterar a massa da aeronave dependendo do tipo de fonte e da forma como a energia é consumida.
-
-Os cálculos relativos à massa, energia, autonomia e comportamento da aeronave pertencem às especificações matemáticas e energéticas correspondentes.
-
----
-
-# 16. Gestão de Consumo
-
-Os módulos do Aerus poderão ser ativados, suspensos ou desativados de acordo com o modo e estado atual do sistema.
-
-A redução do consumo deverá ser considerada quando um módulo ou periférico não for necessário.
-
-Esta gestão poderá contribuir simultaneamente para:
-
-* redução do consumo energético;
-* redução da carga computacional;
-* aumento da autonomia;
-* redução térmica.
-
-A desativação de um sistema nunca deverá ocorrer quando a sua ausência comprometer uma função necessária ao estado atual da aeronave.
-
----
-
-# 17. Cargas Variáveis
-
-A arquitetura deverá considerar que o consumo elétrico do sistema não é constante.
-
-O consumo poderá variar devido a:
-
-* alteração do modo de funcionamento;
-* ativação ou desativação de módulos;
-* quantidade de sensores ativos;
-* quantidade de atuadores ativos;
-* alterações de carga dos atuadores;
-* utilização de periféricos;
-* utilização de implementos.
-
-A distribuição deverá ser dimensionada considerando condições normais e condições de maior consumo previsíveis.
-
----
-
-# 18. Picos de Consumo
-
-O dimensionamento não deverá considerar apenas o consumo médio.
-
-Deverão ser considerados picos de consumo provocados por:
-
-* arranque de motores;
-* movimento simultâneo de atuadores;
-* ativação de periféricos;
-* inicialização de sistemas;
-* alterações rápidas de carga;
-* outros eventos transitórios.
-
-Os sistemas de alimentação deverão suportar os picos previstos sem provocar instabilidade nos sistemas computacionais.
-
----
-
-# 19. Separação entre Potência e Eletrónica
-
-Sempre que necessário, os circuitos de potência deverão ser separados dos circuitos de processamento e comunicação.
-
-Esta separação tem como objetivos:
-
-* reduzir interferências;
-* proteger os elementos computacionais;
-* evitar quedas de tensão provocadas por cargas elevadas;
-* limitar a propagação de falhas;
-* melhorar a estabilidade das interfaces.
-
----
-
-# 20. Proteção
-
-Os sistemas de alimentação deverão possuir mecanismos de proteção adequados aos equipamentos envolvidos.
-
-Poderão ser considerados:
-
-* proteção contra sobrecorrente;
-* proteção contra sobretensão;
-* proteção contra subtensão;
-* proteção contra curto-circuito;
-* proteção térmica;
-* proteção contra inversão de polaridade;
-* proteção contra transientes.
-
-A implementação concreta dependerá da arquitetura elétrica final.
-
----
-
-# 21. Falha de Alimentação
-
-A perda de alimentação de um elemento deverá ser tratada como uma possível condição de falha.
-
-A reação do sistema dependerá da função do elemento afetado.
-
-Uma falha poderá provocar:
-
-* perda de um sensor;
-* perda de um atuador;
-* perda de um elemento computacional;
-* degradação de uma função;
-* alteração de um modo;
-* entrada em FailSafe/FailSecure.
-
-A determinação da resposta pertence às especificações de segurança e de gestão de estados.
-
----
-
-# 22. Falhas Comuns
-
-Deverão ser considerados cenários em que uma única falha de alimentação possa afetar vários sistemas simultaneamente.
-
-Sempre que uma falha comum puder comprometer uma função crítica, deverá ser avaliada a necessidade de:
-
-* separação de alimentação;
-* redundância;
-* proteção independente;
-* fontes alternativas;
-* isolamento.
-
-A implementação dependerá da análise de segurança da aeronave.
-
----
-
-# 23. Arranque
-
-A alimentação dos diferentes sistemas deverá ser disponibilizada de forma compatível com a sequência de arranque do Aerus.
-
-Os elementos deverão atingir estados elétricos estáveis antes de serem considerados disponíveis para operação.
-
-A sequência de arranque e inicialização dos grupos é definida em `SYS-009`.
-
----
-
-# 24. Encerramento
-
-O encerramento deverá garantir que os sistemas são colocados em condições apropriadas antes da remoção da alimentação.
-
-Deverão ser considerados especialmente:
-
-* atuadores;
-* motores;
-* sistemas de potência;
-* armazenamento de dados;
-* sistemas de segurança;
-* periféricos externos.
-
-A sequência funcional de encerramento é definida em `SYS-009`.
-
----
-
-# 25. Implementos
-
-Os implementos poderão possuir requisitos energéticos próprios.
-
-A integração de um implemento deverá considerar:
-
-* fonte de alimentação;
-* consumo;
-* picos;
-* proteção;
-* isolamento;
-* impacto na autonomia;
-* impacto na distribuição de energia da aeronave.
-
-Um implemento não deverá comprometer a alimentação dos sistemas essenciais do Aerus.
-
-A arquitetura específica de integração pertence a `IMP/`.
-
----
-
-# 26. Configuração por Aeronave
-
-A arquitetura energética deverá ser configurável de acordo com a aeronave.
-
-Poderão variar:
-
-* fonte principal;
-* capacidade energética;
-* número de conversores;
-* distribuição;
-* potência disponível;
-* quantidade de elementos computacionais;
-* quantidade de sensores;
-* quantidade de atuadores;
-* implementos disponíveis.
-
-A configuração deverá garantir que os sistemas instalados recebem a energia necessária para a sua operação.
-
----
-
-# 27. Reserva Energética
-
-A capacidade energética disponível deverá ser considerada durante o planeamento e execução da missão.
-
-O sistema deverá possuir mecanismos para determinar a energia disponível e estimar o impacto dessa disponibilidade na operação quando aplicável.
-
-A gestão de energia deverá considerar não apenas a conclusão da missão, mas também a necessidade de manter energia suficiente para executar as funções necessárias até à aterragem e encerramento seguro.
-
----
-
-# 28. Relação com a Segurança
-
-A arquitetura energética deverá ser considerada parte integrante da estratégia de segurança do Aerus.
-
-A indisponibilidade de energia de um sistema crítico poderá impedir a execução de uma função de segurança.
-
-Por esse motivo, a análise energética deverá identificar os sistemas cuja alimentação é necessária para:
-
-* controlo normal;
-* aquisição de sensores;
-* segurança;
-* atuação de emergência;
-* comunicação essencial;
-* aterragem segura.
-
-Os mecanismos de resposta a falhas serão definidos em `SEC/`.
-
----
-
-# 29. Limites do Documento
-
-Este documento não define:
-
-* modelo de bateria;
-* química da bateria;
-* tensão nominal;
-* capacidade nominal;
-* corrente máxima;
-* modelos de conversores;
-* fusíveis específicos;
-* conectores;
-* bitolas de cablagem;
-* esquemas elétricos;
-* valores de proteção;
-* requisitos específicos de cada sensor;
-* requisitos específicos de cada atuador.
-
-Esses elementos deverão ser definidos durante o projeto detalhado.
-
----
-
-# 30. Referências
-
-- HW-001 — Arquitetura_de_Hardware
-- HW-002 — Grupos_Computacionais
-- HW-003 — Distribuicao_de_Hardware
-- HW-004 — Interfaces_Eletricas
-- HW-006 — Interfaces_de_Comunicacao
-- HW-007 — Interfaces_de_Perifericos
-- HW-008 — Redundancia_e_Isolamento_de_Hardware
-- HW-009 — Expansibilidade_e_Configuracao_de_Hardware
-- SYS-006 — Gestao_de_Estados
-- SYS-007 — Modos_de_Funcionamento
-- SYS-009 — Arranque_e_Encerramento
-- MAT — Especificações Matemáticas
-- SEC — Especificações de Segurança
-- ENE — Especificações de Energia
-- ACT — Especificações de Atuadores
-- SEN — Especificações de Sensores
-- IMP — Especificações de Implementos
+# 7. Referências
+
+* HW-001 — Arquitetura de Hardware
+* HW-002 — Grupos Computacionais
+* HW-003 — Distribuição de Hardware
+* HW-004 — Interfaces Elétricas
+* HW-006 — Interfaces de Comunicação
+* HW-007 — Interfaces de Periféricos
+* HW-008 — Redundância e Isolamento de Hardware
+* HW-009 — Expansibilidade e Configuração de Hardware
+* docs/Esquemas/Arquitetura-Computacional.md

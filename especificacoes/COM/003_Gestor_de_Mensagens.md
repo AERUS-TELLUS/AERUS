@@ -1,564 +1,214 @@
 # COM-003 — Gestor de Mensagens
 
-| Campo             | Valor                              |
-| ----------------- | ---------------------------------- |
-| **Código**        | COM-003                            |
-| **Título**        | Gestor de Mensagens                |
-| **Versão**        | 1.0                                |
-| **Estado**        | Em Desenvolvimento                 |
-| **Autor**         | ShegaPT                            |
-| **Classificação** | Especificação de Comunicação       |
+| Campo | Valor |
+|---|---|
+| **Código** | COM-003 |
+| **Título** | Gestor de Mensagens |
+| **Versão** | 2.0 |
+| **Estado** | Aprovado para implementação |
+| **Autor** | ShegaPT |
+| **Classificação** | Especificação de Comunicação |
 
 ---
 
-# 1. Objetivo
+# 1. Objectivo
 
-O presente documento define o comportamento, estrutura e responsabilidades do Gestor de Mensagens do sistema Aerus, que é o módulo central responsável pela comunicação entre módulos e entre domínios computacionais.
-
-O Gestor de Mensagens constitui a camada de aplicação que integra o protocolo TLV (definido em `COM-002`) com o transporte CAN FD (definido em `COM-008`), garantindo a entrega fiável, ordenada e priorizada de todas as mensagens entre Grupos Computacionais.
+O presente documento define as três funções obrigatórias de gestão das comunicações: (i) **Gestor CAN-TLV**, (ii) **Gestor FABRIC** e (iii) **Router CAN↔RJ45**. Nenhuma outra entidade pode transportar informação inter-grupos, intra-cluster ou para o exterior. Qualquer mecanismo paralelo encontra-se proibido.
 
 ---
 
 # 2. Princípios
 
-* ponto único de comunicação inter-grupos em cada elemento;
-* receção, validação, encaminhamento e entrega de mensagens TLV;
-* gestão de prioridades com base no CAN ID e no TLV MSG_ID;
-* fragmentação e reconstituição transparente;
-* coexistência com interfaces locais (UART/SPI/I2C) sem conflito;
-* determinismo — sem alocações dinâmicas de memória em runtime;
-* zero mecanismos de comunicação paralelos fora da arquitetura definida;
-* referência a `SYS-003` §13 para integração na arquitetura de software.
+* Ponto único de passagem por domínio: todo o TLV inter-grupos passa pelo Gestor CAN-TLV; todo o IPC intra-cluster passa pelo Gestor FABRIC; toda a travessia interno↔externo passa pelo Router CAN↔RJ45.
+* Determinismo: memória estática, filas limitadas, sem alocação dinâmica em execução.
+* Validação antes de encaminhamento, sempre.
+* Segregação: a CAN-FailSafe possui gestor dedicado sem partilha de filas com tráfego ordinário.
+* Proibição de atalhos: sem comunicação MISSÃO→ATUADOR directa (ver COM-005).
 
 ---
 
-# 3. Âmbito
+# 3. Âmbito (nomenclatura canónica)
 
-Este documento aplica-se a todos os Grupos Computacionais do Aerus:
-
-| Grupo              | Função principal do Gestor |
-|-------------------|---------------------------|
-| RaspberryPi       | Orquestração — coordena sensores e atuadores |
-| ESP32-S           | Aquisição de dados — envia telemetria |
-| ESP32-A           | Controlo de atuadores — recebe comandos |
-| ESP32-FS          | Segurança — monitoriza e intervém |
-| ESP32-FS_A        | Emergência — recebe comandos de emergência |
+| Entidade | Instância de gestão |
+|---|---|
+| G-SEN, G-ACT, G-CTV, G-NAV, G-MIS, G-CAL, G-COM, G-VIS | Gestor CAN-TLV (redes 1 e 2) |
+| G-FS | Gestor CAN-TLV dedicado + gestor da CAN-FailSafe (rede 3) |
+| Master Geral (4×RP2350, 8 núcleos) | Gestor CAN-TLV (rede 2) + Gestor FABRIC (rede 4) + Router CAN↔RJ45 comando/telemetria (rede 5) |
+| Router GCV (função no G-VIS) | Gestor CAN-TLV (rede 2) + Router CAN↔RJ45 vídeo/descritores (rede 5) |
+| Atuação de Emergência | Extremidade da CAN-FailSafe (não é grupo; sem gestor autónomo) |
 
 ---
 
-# 4. Arquitetura do Gestor
+# 4. Gestor CAN-TLV
 
-## 4.1 Diagrama de Blocos
+## 4.1 Diagrama de blocos
 
-```text
-┌─────────────────────────────────────────────────────────────────────┐
-│                        GESTOR DE MENSAGENS                          │
-│                                                                     │
-│  ┌────────────┐   ┌─────────────┐   ┌─────────────┐                 │
-│  │  Módulo A   │   │  Módulo B   │   │  Módulo C   │  ← Aplicação   │
-│  └─────┬──────┘   └──────┬──────┘   └──────┬──────┘                 │
-│        │                  │                  │                      │
-│        ▼                  ▼                  ▼                      │
-│  ┌─────────────────────────────────────────────────────────────┐    │
-│  │                   DISPATCHER                                │    │
-│  │  - Roteamento por destino (CAN ID)                          │    │
-│  │  - Roteamento por tipo (MSG_ID)                             │    │
-│  │  - Filas por prioridade                                     │    │
-│  └──────────────────────────┬──────────────────────────────────┘    │
-│                             │                                       │
-│        ┌────────────────────┼────────────────────┐                  │
-│        ▼                    ▼                    ▼                  │
-│  ┌──────────┐       ┌──────────────┐       ┌──────────┐             │
-│  │ TX Queue │       │   VALIDATOR  │       │ RX Queue │             │
-│  │ (por     │       │  - CRC8      │       │ (por     │             │
-│  │ priorid.)│       │  - Estrutura │       │ priorid.)│             │
-│  └────┬─────┘       │  - Limites   │       └────┬─────┘             │
-│       │             └──────┬───────┘              │                 │
-│       │                    │                      │                 │
-│       ▼                    ▼                      ▼                 │
-│  ┌──────────┐       ┌──────────────┐       ┌──────────┐             │
-│  │   CAN    │       │ FRAGMENTADOR │       │ RECUPO-  │             │
-│  │  DRIVER  │◄─────►│ / RECUPOSI-  │◄─────►│ RADOR    │             │
-│  │          │       │  TOR         │       │          │             │
-│  └──────────┘       └──────────────┘       └──────────┘             │
-│                                                                     │
-└─────────────────────────────────────────────────────────────────────┘
+```
+┌────────────────────── GESTOR CAN-TLV ──────────────────────┐
+│                                                            │
+│  Aplicação (módulos do grupo)                              │
+│  ┌────────┐  ┌────────┐  ┌────────┐                         │
+│  │ Mód. A │  │ Mód. B │  │ Mód. C │                         │
+│  └───┬────┘  └───┬────┘  └───┬────┘                         │
+│      └───────────┼───────────┘                              │
+│                  ▼                                          │
+│  ┌──────────────────────────────────────┐                  │
+│  │ DISPATCHER (por destino CAN-ID e     │                  │
+│  │ MSG_ID; Intra-Grupo vs Principal vs  │                  │
+│  │ FailSafe) + filas por prioridade     │                  │
+│  └──────┬───────────────────┬───────────┘                  │
+│         ▼                   ▼                              │
+│  ┌────────────┐   ┌──────────────────┐   ┌────────────┐     │
+│  │ TX Queue   │   │ VALIDATOR        │   │ RX Queue   │     │
+│  │ por prior. │   │ START/MSG/COUNT/ │   │ por prior. │     │
+│  └─────┬──────┘   │ CRC8/HMAC/SEQ    │   └─────┬──────┘     │
+│        │          └────────┬─────────┘         │            │
+│        ▼                   ▼                  ▼            │
+│  ┌───────────┐   ┌──────────────────┐   ┌───────────┐       │
+│  │ CAN DRIVER│◄─►│ FRAGMENTADOR /   │◄─►│ RECOMPOS. │       │
+│  │ (MCP2518FD│   │ RECOMPOSITOR     │   │           │       │
+│  │ +transc.) │   │ (≤64 B/quadro)   │   │           │       │
+│  └───────────┘   └──────────────────┘   └───────────┘       │
+└────────────────────────────────────────────────────────────┘
 ```
 
-## 4.2 Componentes
+Componentes: Dispatcher, Validator, TX/RX Queues, Fragmentador/Recompositor, CAN Driver. Contadores de erro por origem (CRC, estrutura, limites, totais, descartes).
 
-| Componente        | Responsabilidade                                          |
-|-------------------|-----------------------------------------------------------|
-| Dispatcher        | Roteamento de mensagens para módulos locais ou para o CAN |
-| Validator         | Validação de estrutura, CRC8 e limites das mensagens      |
-| TX Queue          | Fila de transmissão organizada por prioridade             |
-| RX Queue          | Fila de receção organizada por prioridade                 |
-| Fragmentador      | Divisão de mensagens grandes em frames CAN FD             |
-| Recuprador        | Reconstrução de mensagens fragmentadas                    |
-| CAN Driver        | Interface com o hardware CAN FD                           |
+## 4.2 Recepção
 
----
-
-# 5. Receção de Mensagens
-
-## 5.1 Fluxo de Receção
-
-```text
-Frame CAN FD recebido
-        │
-        ▼
-┌───────────────┐
-│ Filtro CAN ID │──(rejeitado)──→ Descarte
-│ (hardware)    │
-└───────┬───────┘
-        │(aceite)
-        ▼
-┌───────────────┐
-│ Extração      │
-│ payload TLV   │
-└───────┬───────┘
-        │
-        ▼
-┌───────────────┐     ┌─────────────────┐
-│ Parser TLV    │────►│ Mensagem TLV    │
-│ (FSM, COM-002)│     │ serializada     │
-└───────────────┘     └───────┬─────────┘
-                              │
-                              ▼
-                    ┌──────────────────┐
-                    │ VALIDATOR        │
-                    │ 1. START=0xAA?   │──(não)──→ Descarte + Log
-                    │ 2. MSG_ID válido?│──(não)──→ Descarte + Log
-                    │ 3. tlvCount≤32?  │──(não)──→ Descarte + Log
-                    │ 4. CRC8 válido?  │──(não)──→ Descarte + Log
-                    │ 5. Tamanho OK?   │──(não)──→ Descarte + Log
-                    └───────┬──────────┘
-                            │(válido)
-                            ▼
-                    ┌─────────────────┐
-                    │ Decodificação   │
-                    │ CAN ID          │
-                    │ - prioridade    │
-                    │ - origem        │
-                    │ - destino       │
-                    │ - tipo          │
-                    └───────┬─────────┘
-                            │
-                            ▼
-                    ┌─────────────────┐
-                    │ Encaminhamento  │
-                    │ (Dispatcher)    │
-                    └─────────────────┘
+```
+Quadro CAN-FD → filtro CAN-ID (hardware) → extracção TLV → parser FSM (COM-002)
+ → VALIDATOR: START=0xAA? MSG_ID 0x10–0x1F? COUNT≤32? CRC8? tamanho≤1024?
+   HMAC/SEQ (se presentes)? origem conhecida? destino = este Master ou difusão?
+ → Dispatcher → fila RX por prioridade → entrega ao módulo
 ```
 
-## 5.2 Validação na Receção
+Falha em qualquer verificação implica descarte com registo. Na CAN-FailSafe, o descarte gera ainda evento de supervisão e pedido de reenvio (nunca silêncio).
 
-O Validator executa as seguintes verificações em sequência:
+## 4.3 Transmissão
 
-| Verificação    | Descrição                                   | Ação em caso de falha          |
-|----------------|---------------------------------------------|--------------------------------|
-| START byte     | Primeiro byte deve ser 0xAA                 | Descarte imediato              |
-| MSG_ID         | Deve estar no intervalo 0x10-0x1F           | Descarte + incremento contador |
-| TLV COUNT      | Deve ser ≤ 32                               | Descarte + incremento contador |
-| CRC8           | Deve corresponder ao CRC calculado          | Descarte + incremento contador |
-| Tamanho        | Mensagem serializada ≤ 1024 bytes           | Descarte + incremento contador |
-| CAN ID origem  | Grupo de origem deve ser conhecido          | Descarte + log de segurança    |
-| CAN ID destino | Grupo destino deve ser este nó ou broadcast | Descarte silencioso            |
-
-## 5.3 Contadores de Erro
-
-Cada grupo de origem possui contadores independentes:
-
-| Contador                     | Descrição                                 |
-|------------------------------|-------------------------------------------|
-| `rx_crc_errors[grupo]`       | CRC8 inválido recebido do grupo X         |
-| `rx_structure_errors[grupo]` | Estrutura inválida recebida do grupo X    |
-| `rx_limit_errors[grupo]`     | Limites excedidos recebidos do grupo X    |
-| `rx_total[grupo]`            | Total de mensagens recebidas do grupo X   |
-| `rx_discarded[grupo]`        | Total de mensagens descartadas do grupo X |
-
----
-
-# 6. Transmissão de Mensagens
-
-## 6.1 Fluxo de Transmissão
-
-```text
-Módulo de aplicação solicita envio
-        │
-        ▼
-┌───────────────┐
-│ TLVBuilder    │
-│ Serialização  │
-│ (COM-002)     │
-└───────┬───────┘
-        │
-        ▼
-┌───────────────┐
-│ Validação     │──(inválido)──→ Erro para módulo
-│ local         │
-└───────┬───────┘
-        │(válido)
-        ▼
-┌───────────────┐
-│ Cálculo CRC8  │
-│ (SMBUS 0x07)  │
-└───────┬───────┘
-        │
-        ▼
-┌───────────────────────┐      ┌────────────────────┐
-│ Tamanho ≤ 64 bytes?   │─sim─→│ TX Queue           │
-│                       │      │ (classificação por │
-└───────────┬───────────┘      │  prioridade)       │
-            │não               └────────┬───────────┘
-            ▼                          │
-    ┌───────────────┐                  ▼
-    │ FRAGMENTADOR  │          ┌───────────────┐
-    │ (dividir em   │          │ CAN Driver    │
-    │  N frames)    │          │ Transmissão   │
-    └───────┬───────┘          └───────────────┘
-            │
-            ▼
-    ┌───────────────┐
-    │ TX Queue      │
-    │ (N fragmentos)│
-    └───────┬───────┘
-            │
-            ▼
-    ┌───────────────┐
-    │ CAN Driver    │
-    │ Transmissão   │
-    └───────────────┘
+```
+Módulo → TLVBuilder → validação local → CRC8 → cabeçalho CAN-ID 29 bits
+ → TX Queue por prioridade → fragmentação se >64 B → CAN Driver
 ```
 
-## 6.2 Construção do CAN ID
+CAN-ID 29 bits: `(prioridade<<26)|(origem<<22)|(destino<<18)|(tipo<<14)`. Origem/destino são Masters (ou difusão 0x0); tipo classifica o dado. Tabela integral em COM-007/COM-008.
 
-O CAN ID de 29 bits é construído a partir de parâmetros configuráveis:
+## 4.4 Encaminhamento (resumo)
 
-```text
-CAN ID = (Prioridade << 26) | (GrupoOrigem << 22) | (GrupoDestino << 18) | (TipoMsg << 14)
+| Condição | Acção |
+|---|---|
+| Destino = este Master | Entrega local |
+| Destino = difusão | Entrega local (+ processamento de difusão, sem retransmissão automática) |
+| Destino = outro Master (mesma rede) | TX Queue da rede respectiva |
+| Mensagem de segurança na CAN-FailSafe | Fila dedicada SUPER_CRITICAL, sem descarte |
+| Origem desconhecida | Descarte + registo de segurança |
+
+## 4.5 API
+
+`gm_init`, `gm_send(msg,destino,prioridade)`, `gm_broadcast(msg,prioridade)`, `gm_register_handler(msg_id,cb)`, `gm_get_stats`, `gm_reset`. Limites típicos: 6 filas, 32 entradas por fila HIGH/MEDIUM, 8 em SUPER_CRITICAL (dimensionada para nunca encher), 8 fragmentos/mensagem, 100 ms entre fragmentos.
+
+---
+
+# 5. Gestor FABRIC (intra-cluster, Master Geral)
+
+## 5.1 Função
+
+ Gere o IPC determinístico de baixa latência entre os 8 núcleos dos 4×RP2350, incluindo RPC entre núcleos (pedido `MATH_REQUEST`/`NAVIGATION_REQ`/`MISSION_REQ` → resposta `RESPONSE` correlacionada por REQ_ID).
+
+```
+┌────────────────── GESTOR FABRIC (MG) ──────────────────┐
+│ Núcleos 0–7 (4×RP2350)                                 │
+│  ┌────┐ ┌────┐ ┌────┐ ┌────┐ ┌────┐ ┌────┐ ┌────┐ ┌────┐ │
+│  │ N0 │ │ N1 │ │ N2 │ │ N3 │ │ N4 │ │ N5 │ │ N6 │ │ N7 │ │
+│  └──┬─┘ └──┬─┘ └──┬─┘ └──┬─┘ └──┬─┘ └──┬─┘ └──┬─┘ └──┬─┘ │
+│     └──────┴──────┴──────┬──────┴──────┴──────┴──────┘   │
+│                         ▼                              │
+│  ┌─────────────────────────────────────────────────┐   │
+│  │ ARBITER FABRIC (por TIPO + núcleo; TIME_SYNC e  │   │
+│  │ FAULT preemptivos) + filas por núcleo           │   │
+│  └──────┬────────────────────────────┬─────────────┘   │
+│         ▼                            ▼                 │
+│  ┌──────────────┐            ┌───────────────┐          │
+│  │ RPC TRACKER  │            │ CRC FABRIC    │          │
+│  │ (REQ_ID,     │            │ (validação)   │          │
+│  │  tempos-     │            │               │          │
+│  │  limite)     │            │               │          │
+│  └──────────────┘            └───────────────┘          │
+│  Transporte: SPI/DMA/PIO/memória partilhada (a definir; │
+│  protocolo lógico invariante — COM-002 Anexo A)         │
+└────────────────────────────────────────────────────────┘
 ```
 
-| Campo         | Bits   | Fonte                                 |
-|---------------|--------|---------------------------------------|
-| Prioridade    | 28-26  | Derivada do MSG_ID ou configurada     |
-| Grupo Origem  | 25-22  | Configurado por elemento              |
-| Grupo Destino | 21-18  | Especificado pelo módulo de aplicação |
-| Tipo Mensagem | 17-14  | Classificação do tipo de dado         |
-| Reservado     | 13-0   | Zeros                                 |
+Tipos servidos: SENSOR_DATA, MATH_REQUEST, RESPONSE, NAVIGATION_REQ/RESP, MISSION_REQ/RESP, HEALTH_STATUS, SYSTEM_STATUS, TIME_SYNC, FAULT, HEARTBEAT.
 
-## 6.3 Encaminhamento
+## 5.2 Regras
 
-O Dispatcher utiliza a seguinte tabela de roteamento:
+* Todo o quadro FABRIC possui SOURCE/DESTINO/NÚCLEO/TIPO/REQ_ID/TIMESTAMP/COMPRIMENTO/PAYLOAD/CRC (COM-002 Anexo A).
+* RPC: o emissor regista REQ_ID com tempo-limite (COM-006); a resposta com o mesmo REQ_ID completa a chamada; expiração gera FAULT.
+* TIME_SYNC e FAULT são preemptivos sobre tráfego de cálculo.
+* Sem alocação dinâmica; filas por núcleo dimensionadas em COM-004.
+* Falha de 1×RP2350: o Gestor FABRIC isola o par de núcleos afectado, redistribui cargas críticas e sinaliza DEGRADADO (COM-006).
 
-| Condição                         | Ação                                        |
-|----------------------------------|---------------------------------------------|
-| Destino = este nó                | Entrega ao módulo local                     |
-| Destino = broadcast (0x0)        | Entrega ao módulo local + retransmite       |
-| Destino = outro nó (bus oper.)   | Encaminha para TX Queue do bus operacional  |
-| Destino = outro nó (bus seg.)    | Encaminha para TX Queue do bus de segurança |
-| Origem = desconhecida            | Descarte + log de segurança                 |
+## 5.3 API
+
+`fab_init`, `fab_call(núcleo_dest,tipo,payload,timeout)→REQ_ID`, `fab_reply(req_id,payload)`, `fab_publish(tipo,payload)`, `fab_poll(núcleo)`, `fab_stats`.
 
 ---
 
-# 7. Fragmentação e Reconstituição
+# 6. Router CAN↔RJ45 (única travessia interno↔externo)
 
-## 7.1 Necessidade
+Duas instâncias independentes, sem partilha:
 
-O payload máximo de um frame CAN FD é 64 bytes. Mensagens TLV que excedam este limite devem ser fragmentadas.
+| Instância | Sede | Segmento RJ45-RS | Função |
+|---|---|---|---|
+| Router-RF-CMD | MG | MG←→RX 2,4 GHz + TX 868 MHz | Encapsula/descapsula comando ascendente e telemetria descendente; traduz endereços CAN↔série; policia débito e prioridade; rejeita vídeo |
+| Router-GCV-VID | G-VIS (Router GCV) | GCV←→TX 5,8 GHz | Gere o stream 720p30 para a placa TX; publica na CAN apenas `MSG_VIDEO_DESC`; rejeita injecção de comando no segmento de vídeo |
 
-```text
-Espaço efetivo por frame:
-  CAN FD payload    = 64 bytes
-  Overhead CAN FD   ≈ 8-12 bytes
-  Espaço TLV        ≈ 52-56 bytes
-
-Mensagem TLV mínima = START(1) + MSGID(1) + COUNT(1) + CRC8(1) = 4 bytes
-Espaço para campos  ≈ 48 bytes mínimo por frame
+```
+ INTERNO (CAN)                    ROUTER                    EXTERNO (RJ45-RS + RF)
+ Masters/TLV ──► [valida→traduz→policia] ──► série RS ──► RX 2,4 / TX 868 (cmd/telem.)
+ série RS ──► [valida CRC+soma→traduz→FILTRA] ──► TLV CAN (só tipos autorizados)
+ GCV ──► [gestão de stream] ──► série RS ──► TX 5,8 GHz ──► 720p30 no ar
 ```
 
-## 7.2 Estrutura de Fragmentação
+Regras imperativas:
 
-| Campo           | Tamanho | Descrição                     |
-|-----------------|---------|-------------------------------|
-| Fragment Index  | 1 byte  | Índice do fragmento (0-based) |
-| Fragment Total  | 1 byte  | Número total de fragmentos    |
-| TLV Payload     | Variável| Dados TLV neste fragmento     |
+1. Todo o TLV encapsulado para RF foi previamente validado (CRC8/HMAC/SEQ) na CAN.
+2. Todo o conteúdo vindo de RF é validado (soma de verificação + SEQ de enlace) antes de qualquer injecção na CAN; tipos não autorizados são eliminados com registo.
+3. O Router-RF-CMD jamais encapsula vídeo; o Router-GCV-VID jamais injecta comando no segmento de vídeo.
+4. Débitos policiados: comando 50 Hz prioritário sobre telemetria periódica; telemetria de evento preemptiva sobre periódica (COM-004).
+5. Falha de RF não se propaga como falha CAN: o router sinaliza `LINK_DOWN` e o sistema prossegue em voo autónomo.
 
-## 7.3 Regras de Fragmentação
-
-* o primeiro fragmento contém o cabeçalho TLV completo (START + MSG_ID + COUNT);
-* os fragmentos seguintes contêm apenas campos TLV;
-* cada fragmento é transmitido como frame CAN FD independente;
-* todos os fragmentos do mesmo grupo de mensagens partilham o mesmo CAN ID;
-* o receiver reconstrói a mensagem completa antes de processar;
-* fragmento perdido → mensagem inteira descartada;
-* timeout entre fragmentos = timeout normal de receção.
-
-## 7.4 Reconstituição
-
-```text
-Fragmentos recebidos:
-  Frag 0/3: [START][MSG_ID][COUNT][FIELD1][FIELD2]
-  Frag 1/3: [FIELD3][FIELD4][FIELD5]
-  Frag 2/3: [FIELD6][FIELD_N][CRC8]
-
-Reconstituição:
-  [START][MSG_ID][COUNT][FIELD1]...[FIELD_N][CRC8]
-
-Validação:
-  1. Todos os fragmentos recebidos? (Total = 3, Recebidos = 3)
-  2. CRC8 válido?
-  3. MSG_ID e COUNT consistentes?
-  → Mensagem entregue ao Dispatcher
-```
+Exemplo numérico: comando de 24 B a 50 Hz ⇒ 1 200 B/s úteis (≈ 9,6 kbit/s); telemetria de 64 B a 10 Hz ⇒ 640 B/s; ambos folgadamente cabem em 115 200 bit/s com folga para reenvios e eventos.
 
 ---
 
-# 8. Gestão de Prioridades
+# 7. Coexistência com interfaces locais
 
-## 8.1 Dupla Camada de Prioridade
-
-A prioridade é determinada por dois mecanismos complementares:
-
-```text
-┌─────────────────────────────────────────────────────────────┐
-│  CAMADA 1: CAN ID (arbiter hardware)                        │
-│                                                             │
-│  Bits 28-26 do CAN ID determinam quem vence a arbitragem    │
-│  ID mais baixo = prioridade mais alta = transmite primeiro  │
-└─────────────────────────────────────────────────────────────┘
-                            +
-┌─────────────────────────────────────────────────────────────┐
-│  CAMADA 2: TLV MSG_ID (lógica de aplicação)                 │
-│                                                             │
-│  MSG_ID determina prioridade de processamento e descarte    │
-│  no receptor                                                │
-└─────────────────────────────────────────────────────────────┘
-```
-
-## 8.2 Mapeamento de Prioridades
-
-| Nível | CAN ID Bits | MSG_ID(s) associados | Comportamento no receptor |
-|-------|-------------|----------------------|--------------------------|
-| 0 - SUPER_CRITICAL | 0 | MSG_FAILSAFE, MSG_SAFETY_DATA | Nunca descartado, processamento imediato |
-| 1 - CRITICAL | 1 | MSG_COMMAND | Sempre processado, sem descarte |
-| 2 - HIGH | 2 | MSG_TELEMETRY, MSG_HEARTBEAT, MSG_SI_DATA | Processamento prioritário |
-| 3 - MEDIUM | 3 | MSG_VIDEO, MSG_ACK | Processamento normal |
-| 4 - LOW | 4 | MSG_SHELL_CMD | Pode ser atrasado |
-| 5 - SUPER_LOW | 5 | MSG_DEBUG | Descartável se necessário |
-
-As regras detalhadas encontram-se em `COM-004`.
+UART/SPI/I2C com sensores e actuadores são periféricas locais de cada grupo (documentadas em HW) e não constituem redes do modelo. Toda a comunicação inter-grupos, intra-cluster e com o exterior passa obrigatoriamente pelas três funções deste documento.
 
 ---
 
-# 9. Coexistência com Interfaces Locais
+# 8. Segurança e validação
 
-## 9.1 Separação de Domínios
-
-O Gestor de Mensagens gere exclusivamente a comunicação inter-grupos via CAN. As interfaces locais (UART, SPI, I2C) são geridas pelos módulos de aplicação diretamente:
-
-```text
-┌──────────────────────────────────────────────────────────────┐
-│                     GESTOR DE MENSAGENS                      │
-│                                                              │
-│  Comunicação INTER-GRUPOS (CAN FD)                           │
-│  ├── ESP32-S  → RaspberryPi (telemetria)                     │
-│  ├── ESP32-S  → ESP32-FS (telemetria redundante)             │
-│  ├── RaspberryPi → ESP32-A (comandos)                        │
-│  ├── ESP32-FS → ESP32-FS_A (emergência, bus segurança)       │
-│  └── Todos → Todos (heartbeat, estados)                      │
-│                                                              │
-└──────────────────────────────────────────────────────────────┘
-
-┌──────────────────────────────────────────────────────────────┐
-│               MÓDULOS DE APLICAÇÃO (independentes)           │
-│                                                              │
-│  Comunicação LOCAL (UART/SPI/I2C)                            │
-│  ├── ESP32-S  ←→ Sensores (UART/SPI/I2C)                     │
-│  ├── ESP32-A  ←→ Atuadores (UART/SPI/I2C)                    │
-│  ├── ESP32-FS ←→ Sensores supercríticos (UART/SPI/I2C)       │
-│  └── ESP32-FS_A ←→ Atuadores emergência (UART/SPI/I2C)       │
-│                                                              │
-└──────────────────────────────────────────────────────────────┘
-```
-
-## 9.2 Regra Fundamental
-
-**Nenhum módulo deverá implementar mecanismos próprios de comunicação paralelos à arquitetura definida pelo sistema.**
-
-A comunicação com periféricos locais (sensores via UART/SPI/I2C) é da responsabilidade de cada módulo de aplicação, mas toda a comunicação entre Grupos Computacionais deverá passar exclusivamente pelo Gestor de Mensagens.
-
-## 9.3 Coexistência na Prática
-
-| Interface   | Utilizador | Dados             | Via Gestor?       |
-|-------------|------------|-------------------|-------------------|
-| UART sensor | ESP32-S    | Leituras brutas   | Não (local)       |
-| SPI atuador | ESP32-A    | PWM, configuração | Não (local)       |
-| I2C sensor  | ESP32-FS   | Dados críticos    | Não (local)       |
-| CAN FD      | Todos      | TLV serializado   | Sim (obrigatório) |
+Sequência no receptor CAN: CRC CAN (hardware) → filtro CAN-ID → parser TLV → CRC8 → HMAC → SEQ → entrega. No FABRIC: CRC FABRIC → TIPO/REQ_ID → entrega/RPC. No Router: validação do domínio de origem antes de qualquer tradução. Contadores por camada (COM-010).
 
 ---
 
-# 10. Eventos e Exceções
+# 9. Nota histórica de migração
 
-## 10.1 Tratamento de Eventos
-
-O Gestor de Mensagens processa eventos de forma especial:
-
-| Evento                | Prioridade     | Ação                                               |
-|-----------------------|----------------|----------------------------------------------------|
-| MSG_FAILSAFE recebido | SUPER_CRITICAL | Processamento imediato, notificação de segurança   |
-| Perda de heartbeat    | Variável       | Ativação de timeout (ver `COM-006`)                |
-| Erro CRC frequente    | Média          | Registo, notificação de diagnóstico                |
-| Born-off CAN          | Crítica        | Notificação de segurança, tentativa de recuperação |
-| Fragmento perdido     | Baixa          | Descarte da mensagem, registo                      |
-
-## 10.2 Registo e Rastreabilidade
-
-Cada evento é registado com:
-
-* timestamp (monotonic clock);
-* CAN ID da mensagem;
-* MSG_ID do TLV;
-* grupo de origem;
-* código de erro (se aplicável);
-* ação tomada.
+> Raspberry Pi, ESP32 e FS_A não são instâncias deste gestor e não possuem filas, handlers nem rotas. Correspondências antigas (ex.: «orquestrador», «ponte entre barramentos») devem ser reatribuídas ao Master Geral, aos Masters de Grupo e ao Router GCV nos termos do §3.
 
 ---
 
-# 11. API do Gestor
+# 10. Referências
 
-## 11.1 Funções Principais
-
-| Função                                  | Descrição                         |
-|-----------------------------------------|-----------------------------------|
-| `gm_init()`                             | Inicialização do gestor e filas   |
-| `gm_send(msg, destino, prioridade)`     | Enviar mensagem TLV para destino  |
-| `gm_broadcast(msg, prioridade)`         | Enviar mensagem TLV para todos    |
-| `gm_register_handler(msg_id, callback)` | Registar handler para MSG_ID      |
-| `gm_get_stats()`                        | Obter estatísticas de comunicação |
-| `gm_reset()`                            | Reiniciar gestor e limpar filas   |
-
-## 11.2 Callbacks
-
-```cpp
-typedef void (*GM_Handler)(const TLVMessage* msg, const CANID* can_id);
-
-// Registo de handlers
-gm_register_handler(MSG_TELEMETRY, on_telemetry_received);
-gm_register_handler(MSG_COMMAND, on_command_received);
-gm_register_handler(MSG_FAILSAFE, on_failsafe_received);
-gm_register_handler(MSG_HEARTBEAT, on_heartbeat_received);
-gm_register_handler(MSG_STATE_BROADCAST, on_state_received);
-```
-
-## 11.3 Limites Configuráveis
-
-| Parâmetro                | Valor padrão | Descrição                                |
-|--------------------------|--------------|------------------------------------------|
-| `GM_MAX_QUEUES`          | 6            | Número de filas (uma por prioridade)     |
-| `GM_MAX_QUEUE_SIZE`      | 32           | Tamanho máximo de cada fila              |
-| `GM_MAX_HANDLERS`        | 16           | Número máximo de handlers registados     |
-| `GM_FRAGMENT_TIMEOUT_MS` | 100          | Timeout entre fragmentos                 |
-| `GM_MAX_FRAGMENTS`       | 8            | Número máximo de fragmentos por mensagem |
-| `GM_RX_BUFFER_SIZE`      | 2048         | Tamanho do buffer de receção             |
-
----
-
-# 12. Integração com Outros Módulos
-
-## 12.1 Módulos Dependentes
-
-| Módulo                     | Dependência | Descrição                               |
-|----------------------------|-------------|-----------------------------------------|
-| Security (SEC/)            | HMAC, SEQ   | Autenticação e anti-replay              |
-| State Manager (SYS-006)    | Estados     | Reação a mudanças de estado             |
-| Temporal Manager (SYS-008) | Timeouts    | Gestão de timeouts por grupo            |
-| Safety Module (SEC/)       | Failsafe    | Processamento de mensagens de segurança |
-
-## 12.2 Referências
-
-| Documento | Secção | Relação                                        |
-|-----------|--------|------------------------------------------------|
-| SYS-003   | §13    | Definição do gestor na arquitetura de software |
-| COM-002   | §13    | Parser TLV utilizado pelo gestor               |
-| COM-004   | —      | Regras de prioridade e filas                   |
-| COM-006   | —      | Timeouts e recuperação                         |
-| COM-008   | §14    | Fragmentação CAN FD                            |
-| COM-010   | —      | Validação de integridade                       |
-
----
-
-# 13. Segurança
-
-## 13.1 Validação Multi-Camada
-
-O Gestor de Mensagens implementa validação em duas camadas:
-
-| Camada      | Mecanismo             | Proteção                         |
-|-------------|-----------------------|----------------------------------|
-| CAN FD      | CRC nativo 17-bit     | Erros de transmissão física      |
-| Aplicação   | CRC8 TLV (SMBUS 0x07) | Corrupção na camada de aplicação |
-| Segurança   | HMAC (32 bytes)       | Mensagens falsificadas           |
-| Anti-replay | SEQ (4 bytes)         | Reenvio de mensagens capturadas  |
-
-## 13.2 Validação no Receiver
-
-```text
-┌──────────────────────────────────────────────────────┐
-│ SEQUÊNCIA DE VALIDAÇÃO NO RECEIVER                   │
-│                                                      │
-│ 1. CAN CRC nativo ──(falha)──→ Descarte + incremento │
-│          │                                           │
-│          ▼ (sucesso)                                 │
-│ 2. Filtro CAN ID ──(rejeitado)──→ Descarte           │
-│          │                                           │
-│          ▼ (aceite)                                  │
-│ 3. Parser TLV ──(erro)──→ Descarte + reset parser    │
-│          │                                           │
-│          ▼ (sucesso)                                 │
-│ 4. CRC8 TLV ──(falha)──→ Descarte + incremento       │
-│          │                                           │
-│          ▼ (sucesso)                                 │
-│ 5. HMAC (se presente) ──(falha)──→ Descarte + alerta │
-│          │                                           │
-│          ▼ (sucesso)                                 │
-│ 6. SEQ (se presente) ──(replay)──→ Descarte + alerta │
-│          │                                           │
-│          ▼ (sucesso)                                 │
-│ 7. ENTREGA AO MÓDULO DE APLICAÇÃO                    │
-└──────────────────────────────────────────────────────┘
-```
-
----
-
-# 14. Limites do Documento
-
-Este documento não define detalhadamente:
-
-* regras completas de prioridade e descarte (ver `COM-004`);
-* regras completas de timeout e recuperação (ver `COM-006`);
-* topologia completa de comunicação entre domínios (ver `COM-007`);
-* implementação específica do CAN driver (ver `COM-008`);
-* algoritmos de segurança e autenticação (ver `SEC/`);
-* implementação específica do parser TLV (ver `COM-002`).
-
----
-
-# 15. Referências
-
-- COM-001 — Arquitetura de Comunicação
-- COM-002 — Protocolo TLV
-- COM-004 — Prioridades e Filas
-- COM-005 — Eventos
-- COM-006 — Timeouts e Recuperação
-- COM-008 — CAN Bus
-- COM-010 — Integridade
-- SHARED-TLV — Definições do Protocolo TLV
-- SHARED-CAN-IDS — Alocação de CAN IDs
-- SYS-003 — Arquitetura de Software (§13)
-- SYS-005 — Fluxo Global de Informação
-- SYS-008 — Gestão Temporal
-- HW-006 — Interfaces de Comunicação
-- SEC — Especificações de Segurança
+* COM-001 — Arquitetura de Comunicação
+* COM-002 — Protocolo TLV (+ Anexos FABRIC e RJ45)
+* COM-004 — Prioridades e Filas
+* COM-005 — Eventos
+* COM-006 — Timeouts e Recuperação
+* COM-007 — Comunicação entre Domínios
+* COM-008 — CAN Bus
+* COM-010 — Integridade

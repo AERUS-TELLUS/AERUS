@@ -1,573 +1,183 @@
-# HW-008 — Redundancia_e_Isolamento_de_Hardware
+# HW-008 — Redundância e Isolamento de Hardware
 
-| Campo             | Valor                                |
-| ----------------- | ------------------------------------ |
-| **Código**        | HW-008                               |
-| **Título**        | Redundância e Isolamento de Hardware |
-| **Versão**        | 1.0                                  |
-| **Estado**        | Em Desenvolvimento                   |
-| **Autor**         | ShegaPT                              |
-| **Classificação** | Especificação de Hardware            |
+| Campo | Valor |
+| --- | --- |
+| **Código** | HW-008 |
+| **Título** | Redundância e Isolamento de Hardware |
+| **Versão** | 2.0 |
+| **Estado** | Em Desenvolvimento |
+| **Autor** | ShegaPT |
+| **Classificação** | Especificação de Hardware |
+| **Referência** | docs/Esquemas/Arquitetura-Computacional.md |
 
 ---
 
 # 1. Objetivo
 
-O presente documento define os princípios de redundância e isolamento de hardware aplicáveis ao Aerus.
+O presente documento define os princípios de redundância e isolamento de hardware do sistema AERUS-TELLUS: onde duplicar com proveito (sensores, nós, vias de atuação, supervisão), onde não duplicar (comando simultâneo do mesmo atuador, píxeis, tudo-por-defeito) e como isolar domínios (energia, comunicação, processamento, atuação, sensores, térmica e EMC) para que uma falha localizada não se propague a todo o veículo.
 
-A arquitetura deverá utilizar redundância sempre que esta contribua de forma significativa para a disponibilidade, deteção de falhas ou segurança do sistema.
-
-A redundância não deverá ser aplicada indiscriminadamente.
-
-O princípio fundamental será utilizar apenas a redundância necessária para reduzir riscos relevantes sem introduzir massa, complexidade, consumo ou novos pontos de falha desnecessários.
+Explica como o cluster de 4 × RP2350 degrada com graça, como o Grupo FailSafe/Supervisão mantém autoridade independente e como a arquitetura distingue continuar a missão, degradar, abortar e executar emergência.
 
 ---
 
-# 2. Princípio de Redundância
+# 2. Âmbito
 
-A redundância do Aerus deverá seguir um princípio semelhante ao utilizado em sistemas aeronáuticos de elevada exigência:
+Abrange:
 
-> redundância suficiente para manter ou recuperar uma função crítica, mas sem duplicação indiscriminada de todos os componentes.
+* redundância de sensores, computacional, de atuação, de energia e de comunicação;
+* degradação do Master Geral (perda de um RP2350/núcleo) e do GCV;
+* independência e autoridade do FailSafe, sensores de reserva e via de emergência;
+* isolamento elétrico, físico, térmico e eletromagnético; falhas comuns; massa e complexidade.
 
-A quantidade de elementos redundantes dependerá da criticidade da função.
+Não abrange:
 
-Poderão existir:
-
-* dois ou mais sensores equivalentes;
-* múltiplos elementos computacionais dentro de um Grupo Computacional;
-* sensores independentes associados ao domínio de segurança;
-* vias independentes de atuação;
-* mecanismos de recuperação através do ESP32-FS e ESP32-FS_A.
+* algoritmos de fusão/votação (ver MAT, SEN) nem procedimentos de emergência (ver SEC);
+* dimensionamento elétrico e proteções por derivação (ver HW-004, HW-005);
+* protocolo e tempos (ver HW-006, COM, SYS).
 
 ---
 
-# 3. Redundância de Sensores
+# 3. Descrição
 
-Sensores cuja falha possa provocar uma decisão incorreta ou uma emergência desnecessária poderão possuir sensores redundantes.
+## 3.1 Princípio: redundância suficiente, nunca indiscriminada
 
-Quando aplicável, poderão existir dois ou mais sensores capazes de medir a mesma grandeza.
+> Redundância suficiente para manter ou recuperar uma função crítica, sem duplicar tudo nem criar novos pontos únicos de falha.
 
-```text id="5b4y7c"
-             ┌──► Sensor A ──► ESP32-S
-Grandeza ────┤
-             └──► Sensor B ──► ESP32-S
+Antes de duplicar, avaliar: que risco se reduz, que falha se cobre, que independência real se obtém (não é redundância útil duplicar o que partilha sensor, energia, ligação, configuração ou ambiente de falha), que massa, consumo, volume, cablagem e manutenção se pagam e se existe recuperação mais simples por outro domínio (tipicamente o FailSafe).
+
+## 3.2 Redundância de sensores
+
+Sensores cuja falha induza decisão errada ou emergência desnecessária são candidatos a redundância:
+
+```text
+Grandeza ─┬──► Sensor A ──► COMPUTE-SENSORIAL_01 (RP2040) ──┐
+          └──► Sensor B ──► COMPUTE-SENSORIAL_02 (RP2040) ──┼──► R1 ─► comparação
 ```
 
-Os sensores redundantes deverão, sempre que possível, ser independentes entre si.
+Independência a procurar, conforme criticidade: posições distintas, nós distintos, interfaces distintas, fabricantes/tecnologias distintos, derivações de energia distintas. A comparação (divergência, degradação, validação cruzada, continuidade com fontes restantes) é consumida por SEN/MAT/SEC; aqui garante-se apenas que as fontes chegam independentes e datadas.
 
----
+## 3.3 Redundância computacional e degradação do cluster
 
-# 4. Independência dos Sensores Redundantes
+Não se duplica integralmente o sistema. Duplica-se seletivamente: N nós sensoriais, Master Sensorial quando o volume o exigir, nós FailSafe distribuídos, núcleos com funções sobrepostas no cluster.
 
-A redundância de sensores deverá evitar, sempre que justificável, a existência de uma única falha comum capaz de inutilizar simultaneamente todos os sensores.
+Falha de um RP2350 do Master Geral:
 
-A independência poderá ser obtida através de:
-
-* sensores fisicamente separados;
-* elementos computacionais diferentes;
-* interfaces diferentes;
-* fabricantes diferentes;
-* alimentação diferente quando necessário;
-* tecnologias diferentes quando justificável.
-
-A necessidade de cada forma de independência deverá ser avaliada de acordo com a criticidade da grandeza medida.
-
----
-
-# 5. Sensores de Fabricantes Diferentes
-
-Para determinadas grandezas críticas, poderá ser utilizada diversidade de fabricante ou tecnologia.
-
-Esta abordagem tem como objetivo reduzir a probabilidade de uma falha específica de um determinado componente afetar simultaneamente todas as fontes de informação.
-
-A utilização de sensores de fabricantes diferentes será especialmente relevante no domínio de segurança.
-
----
-
-# 6. Redundância no ESP32-S
-
-O Grupo Computacional ESP32-S poderá possuir múltiplos elementos físicos.
-
-Dois ou mais elementos ESP32-S poderão adquirir sensores equivalentes de forma independente.
-
-Exemplo:
-
-```text id="r5s3wq"
-        Sensor A1 ──► ESP32-S_01
-Grandeza
-        Sensor A2 ──► ESP32-S_02
+```text
+RP2350 #1 ─ OK     RP2350 #2 ─ OK
+RP2350 #3 ─ FALHA  RP2350 #4 ─ OK (supervisor)
+  → supervisor deteta por heartbeat/timeout/CPU presa/latência/CRC
+  → identifica serviços perdidos → entra em estado predefinido
+  → mantém funções críticas possíveis → regista → informa R1/R5
+  → redistribui o essencial (ex.: Missão suspende; Voo+Navegação+Cálculo preservados)
 ```
 
-Cada elemento deverá produzir os seus próprios dados.
+A possibilidade de retomar o nó (reinicialização seletiva) é decidida por classe de falha; nunca à custa de perturbar o voo. Falha do GCV (i.MX ou Router): o Router isola o SoC (corte e reinicialização), publica indisponibilidade em R1 e o veículo prossegue sem visão — a visão nunca é crítica para manter o voo.
 
-Os dados não deverão ser automaticamente considerados equivalentes apenas por serem provenientes do mesmo tipo de sensor.
+Não se adota, como regra, comando simultâneo do mesmo atuador por dois COMPUTE-ACTUATOR: gera conflito e complexidade. Cada atuador tem um responsável normal; a reserva é a via de emergência do FailSafe:
 
----
+```text
+Normal:     Missão ─pede─► Voo ─valida─► ACTUATOR ─► atuador (+feedback)
+Emergência: FailSafe ─inibe normal─► via mínima ─► atuador crítico
+```
 
-# 7. Comparação de Dados
+Falha do atuador em si não se mascara com eletrónica: deteta-se por retorno e decide-se (outro atuador, reconfiguração, cancelamento, aterragem) conforme consequência — sem automatismo cego para regresso.
 
-Quando existirem múltiplas fontes para a mesma grandeza, o sistema poderá comparar os respetivos valores.
+## 3.4 FailSafe, sensores de reserva e autoridade
 
-A comparação poderá permitir:
+O Grupo FailSafe/Supervisão (núcleo supervisor no cluster + nós COMPUTE-NODE com GPS/IMU/barómetro/temperatura de reserva, de fabricantes quando possível distintos) é a camada independente de proteção. Em operação normal, as reservas alimentam avaliação e baliza e permanecem fora do lacete primário; se os principais falharem ou divergirem, suportam o mínimo para emergência (incluindo regresso quando os dados o permitirem, sem garantia universal).
 
-* deteção de divergências;
-* deteção de sensores degradados;
-* deteção de falhas;
-* validação cruzada;
-* manutenção da operação quando uma fonte falhar.
+Autoridade:
 
-Os algoritmos de comparação e decisão pertencem às especificações `SEN/`, `MAT/` e `SEC/`.
+```text
+FailSafe avalia por si (sensores + feedback + estados + R1/R5)
+  ├── aceita pedido da Missão/Voo → executa procedimento
+  └── recusa → mantém operação e regista
+```
 
----
+O domínio normal pode pedir emergência; nunca a impõe. O FailSafe pode inibir o Atuador normal; o normal nunca inibe o FailSafe.
 
-# 8. Redundância Computacional
+## 3.5 Isolamento entre domínios
 
-A redundância computacional deverá ser aplicada de forma seletiva.
+| Eixo | Medidas |
+| --- | --- |
+| Energia | Derivações independentes e protegidas por domínio; FailSafe em derivação própria; potência separada da digital (HW-005) |
+| Comunicação | R1 partilhado mas com prioridades e deteção; R2 confinado ao cluster; R3 confinado ao GCV; R4/R5 sem acesso direto a R1/R2; via de emergência independente do caminho normal |
+| Processamento | Núcleos com funções predominantes; TrustZone no RP2350B; SoC de visão isolado pelo Router; nenhum grupo acede a memória alheia sem IPC |
+| Atuação/sensores | Responsável único por atuador; reservas independentes; condicionamento junto ao nó |
+| Física/térmica/EMC | Posições separadas (baía vs. cauda), blindagem, filtragem, dissipação e monitorização; sem ponto único previsível que derrube normal + segurança |
 
-Não é objetivo do Aerus duplicar integralmente todos os Grupos Computacionais.
+Falhas comuns a caçar ativamente: mesmos sensores/energia/comunicação para principal e reserva; mesma configuração errada replicada; mesmo ambiente (calor, água, vibração) a atingir redundâncias gémeas. O que não for eliminável, declara-se e trata-se na análise de segurança.
 
-A quantidade de elementos computacionais deverá ser determinada de acordo com:
+## 3.6 Degradação controlada e localização de falhas
 
-* criticidade;
-* capacidade necessária;
-* disponibilidade;
-* massa;
-* consumo;
-* complexidade;
-* possibilidade de recuperação através de outro domínio.
+Perder uma fonte não é sinónimo de emergência: com fontes restantes coerentes, degrada-se (suspende-se missão, reduz-se envelope, adia-se TX) e prossegue-se. Cada falha localiza-se (componente, função, dependentes, reservas, continuidade, procedimento) e regista-se com tempo e contexto para manutenção.
 
----
-
-# 9. ESP32-A
-
-Não será adotada, como princípio geral, uma duplicação de elementos ESP32-A para controlar simultaneamente o mesmo atuador.
-
-Cada atuador deverá possuir normalmente um elemento ESP32-A responsável pelo seu controlo.
-
-A duplicação direta de controlo do mesmo atuador poderá introduzir conflitos e complexidade adicional.
+Toda a redundância paga-se em massa, consumo, volume, cablagem e manutenção — por isso varia por aeronave (HW-009) e nunca se aplica por rotina.
 
 ---
 
-# 10. Falha de ESP32-A
+# 4. Exemplos
 
-A falha de um elemento ESP32-A responsável por um atuador deverá ser tratada como uma condição de falha do sistema.
+## Exemplo 1 — Divergência de IMU
 
-Nessa situação, o Aerus deverá poder recorrer ao domínio de segurança.
+```text
+IMU principal vs. IMU de reserva divergem além do limiar
+  → FailSafe publica FAULT prioritário, Voo usa fonte sã, Missão suspende
+  → aterragem preventiva se a divergência persistir; registo para troca do sensor
+```
 
-O ESP32-FS_A poderá assumir a atuação necessária em condições de FailSafe/FailSecure, de acordo com as regras definidas pelo sistema.
+## Exemplo 2 — Perda de um RP2350 em voo
 
-```text id="k2k6p1"
-Operação normal:
+```text
+RP2350 #3 (Missão) bloqueia → supervisor isola, reinicia seletivamente
+  → Voo+Navegação+Cálculo intactos; Missão em espera; veículo orbita seguro
+  → se o reinício falhar, regresso ou aterragem conforme energia e sensores
+```
 
-RaspberryPi
-     │
-     ▼
- ESP32-A
-     │
-     ▼
- Atuador
+## Exemplo 3 — Curto + calor na baía central
 
-
-Falha / emergência:
-
-ESP32-FS
-     │
-     ▼
-ESP32-FS_A
-     │
-     ▼
- Atuador
+```text
+Curto numa derivação normal → eFuse corta; sobreaquecimento do GCV → Router corta SoC
+  → FailSafe na cauda (energia e sensores próprios) avalia e assume mínimo
+  → R5 anuncia; R1 regista; missão abortada sem perda de controlo
 ```
 
 ---
 
-# 11. Falha do Atuador
+# 5. Interfaces
 
-A redundância computacional não deverá ser utilizada para mascarar uma falha física do atuador.
-
-Se o próprio atuador apresentar uma falha, o sistema deverá ser capaz de reconhecer essa condição através do *feedback* disponível ou de outras informações.
-
-A resposta deverá depender da consequência da falha.
-
-Poderá ser possível:
-
-* utilizar outro atuador;
-* alterar a configuração de controlo;
-* alterar o modo de funcionamento;
-* cancelar a missão;
-* executar uma aterragem;
-* executar outro procedimento de emergência.
-
-O sistema não deverá assumir automaticamente que toda falha conduz a RTL.
+| Interface | Papel na redundância/isolamento |
+| --- | --- |
+| R1 CAN-Principal | Heartbeats, FAULT, HEALTH_STATUS, inibições, sincronismo |
+| R2 Fabric | Deteção intra-cluster, redistribuição, reinício seletivo |
+| Via de emergência FailSafe→atuação | Inibição do normal + comando mínimo (por atuador, ver ACT) |
+| Derivações de energia independentes | Sobrevivência do FailSafe a falhas do normal (HW-005) |
+| RJ45-RS R4/R5 | Anúncio e diagnóstico sem expor redes internas |
+| Sensores principais + reservas | Comparação, votação e continuidade (SEN/MAT/SEC) |
 
 ---
 
-# 12. Sensores Críticos do ESP32-FS
+# 6. Pontos em aberto
 
-O ESP32-FS deverá possuir acesso direto a sensores considerados supercríticos.
-
-Entre os sensores atualmente previstos encontram-se:
-
-* GPS;
-* IMU;
-* barómetro;
-* temperatura.
-
-Outros sensores poderão ser adicionados posteriormente quando a análise de segurança determinar essa necessidade.
+| # | Ponto em aberto | Resolução |
+| --- | --- | --- |
+| 1 | Grandezas com redundância obrigatória por classe de aeronave e limiares de divergência | SEN + SEC + ensaio |
+| 2 | Diversidade de fabricantes por sensor crítico e lista de reservas do FailSafe | SEN + compras |
+| 3 | Política de redistribuição e de reinício seletivo por classe de falha do cluster | COM + SEC + ensaio de falha |
+| 4 | Atuadores abrangidos pela via de emergência e implementação física por atuador | ACT + projeto |
+| 5 | Seletividade das proteções e independência energética demonstrada por ensaio de curto | HW-005 + ensaio |
+| 6 | Estratégia térmica/EMC e matriz de falhas comuns por modelo | Projeto + HW-003/HW-005 |
 
 ---
 
-# 13. Independência dos Sensores do ESP32-FS
-
-Os sensores ligados diretamente ao ESP32-FS deverão ser independentes dos sensores principais utilizados pelo domínio normal sempre que tal seja necessário para garantir a função de reserva.
-
-Sempre que aplicável, deverão ser utilizados sensores de fabricantes diferentes dos sensores principais.
-
-O objetivo é evitar que uma falha comum nos sensores principais inutilize simultaneamente a informação necessária ao domínio de segurança.
-
----
-
-# 14. Função dos Sensores do ESP32-FS
-
-Os sensores ligados ao ESP32-FS possuem duas funções principais.
-
-### 14.1. Beacon
-
-Os dados necessários deverão poder alimentar diretamente o sistema de **Beacon** obrigatório aplicável à operação da aeronave.
-
-### 14.2. Reserva de Emergência
-
-Os mesmos sensores poderão fornecer ao domínio de segurança um conjunto mínimo de informações de voo caso os sensores principais fiquem indisponíveis ou não confiáveis.
-
----
-
-# 15. Dados de Reserva
-
-Os sensores associados ao ESP32-FS não constituem a fonte primária de dados para o voo normal.
-
-Durante a operação normal, os dados desses sensores deverão permanecer destinados principalmente às funções atribuídas ao domínio de segurança e ao Beacon.
-
-Caso os sensores principais deixem de fornecer informação válida, os sensores de reserva poderão ser utilizados para suportar as funções mínimas necessárias à recuperação da aeronave.
-
----
-
-# 16. Recuperação em Emergência
-
-A disponibilidade dos sensores de reserva deverá permitir que determinadas falhas não conduzam automaticamente à perda da capacidade de voo.
-
-Por exemplo, uma falha dos sensores principais de:
-
-* posição;
-* atitude;
-* altitude;
-
-poderá permitir ao ESP32-FS utilizar as fontes de reserva disponíveis para suportar uma operação de emergência.
-
-Quando as condições forem suficientes, poderá ser executado um **RTL — Return to Launch** seguro.
-
----
-
-# 17. Limitações da Recuperação
-
-A existência de sensores de reserva não garante que qualquer falha possa ser recuperada.
-
-A decisão deverá depender da informação disponível e da capacidade da aeronave continuar a operar de forma segura.
-
-Caso os dados disponíveis não permitam uma recuperação segura através de RTL, o Aerus poderá selecionar outro procedimento de emergência.
-
-A estratégia de decisão pertence a `SEC/`.
-
----
-
-# 18. Redundância do Domínio de Segurança
-
-O ESP32-FS constitui uma camada independente de supervisão e segurança.
-
-A arquitetura deverá permitir que este domínio continue a executar as suas funções mesmo quando o domínio normal apresentar falhas.
-
-O objetivo não é duplicar completamente o Aerus, mas manter as funções mínimas necessárias para:
-
-* deteção de falhas;
-* avaliação de segurança;
-* execução de medidas de emergência;
-* atuação necessária;
-* recuperação da aeronave quando possível.
-
----
-
-# 19. ESP32-FS_A
-
-O ESP32-FS_A constitui um elemento de atuação associado ao domínio de segurança.
-
-Este grupo não deverá participar no controlo normal da aeronave.
-
-A sua existência permite manter uma capacidade de atuação mesmo perante determinadas falhas do caminho normal.
-
-O ESP32-FS_A recebe comandos diretamente do ESP32-FS.
-
----
-
-# 20. Isolamento entre Domínios
-
-Os diferentes Grupos Computacionais deverão possuir isolamento suficiente para impedir que uma falha localizada se propague automaticamente para todo o sistema.
-
-O isolamento deverá ser considerado a nível de:
-
-* alimentação;
-* comunicação;
-* processamento;
-* software;
-* atuação;
-* sensores.
-
-A implementação concreta dependerá da natureza da função.
-
----
-
-# 21. Isolamento do Domínio de Segurança
-
-O domínio constituído por ESP32-FS e ESP32-FS_A deverá permanecer funcional perante determinadas falhas do domínio operacional.
-
-O RaspberryPi não deverá possuir autoridade para obrigar o ESP32-FS a executar uma ação de segurança.
-
-O RaspberryPi poderá solicitar uma entrada em FailSafe/FailSecure, mas o ESP32-FS deverá avaliar independentemente essa solicitação.
-
----
-
-# 22. Independência de Decisão
-
-O ESP32-FS deverá possuir capacidade de realizar as suas próprias avaliações utilizando os dados disponíveis.
-
-Assim, uma solicitação proveniente do RaspberryPi não deverá ser considerada automaticamente válida.
-
-Exemplo:
-
-```text id="0b9g2p"
-RaspberryPi
-     │
-     │ Pedido de emergência
-     ▼
- ESP32-FS
-     │
-     ├── Avalia sensores
-     ├── Avalia estados
-     ├── Avalia feedback
-     └── Avalia segurança
-              │
-       ┌──────┴──────┐
-       ▼             ▼
-    Aceita          Recusa
-       │             │
-       ▼             ▼
-Procedimento     Operação
-de emergência     normal
-```
-
----
-
-# 23. Falhas Comuns
-
-A arquitetura deverá procurar minimizar pontos de falha comuns que possam inutilizar simultaneamente:
-
-* sensores principais e de reserva;
-* domínio normal e domínio de segurança;
-* alimentação normal e alimentação de segurança;
-* comunicação normal e comunicação de segurança;
-* múltiplos elementos redundantes.
-
-Quando uma falha comum não puder ser eliminada, deverá ser considerada na análise de segurança.
-
----
-
-# 24. Redundância de Alimentação
-
-A necessidade de redundância ou separação de alimentação deverá ser determinada pela criticidade dos sistemas.
-
-Não será obrigatório duplicar a alimentação de todos os componentes.
-
-Sistemas cuja perda possa comprometer funções críticas poderão necessitar de maior independência energética.
-
-A arquitetura detalhada pertence a `HW-005`.
-
----
-
-# 25. Redundância de Comunicação
-
-A existência de múltiplas vias de comunicação não será obrigatória para todos os sistemas.
-
-A necessidade de uma via independente deverá ser determinada pela criticidade da informação.
-
-O domínio de segurança deverá possuir as ligações necessárias para manter as suas funções mesmo perante determinadas falhas do sistema normal.
-
-A comunicação entre ESP32-FS e ESP32-FS_A utiliza um **bus CAN FD dedicado de segurança**, separado do bus operacional. O ESP32-FS está conectado a ambos os buses, permitindo avaliar a informação de ambos os domínios.
-
-A arquitetura física detalhada encontra-se em `HW-006` e `COM-008`.
-
----
-
-# 26. Redundância de Atuadores
-
-A redundância de atuadores deverá ser aplicada apenas quando existir uma vantagem operacional ou de segurança justificável.
-
-Quando a falha de um atuador puder ser compensada por outro atuador ou por uma alteração de procedimento, essa possibilidade poderá ser utilizada.
-
-Não deverá ser assumido que todos os atuadores necessitam de duplicação.
-
----
-
-# 27. Redundância e Massa
-
-Toda redundância deverá ser avaliada tendo em consideração o impacto físico na aeronave.
-
-A duplicação de componentes poderá aumentar:
-
-* massa;
-* consumo;
-* volume;
-* complexidade;
-* cablagem;
-* pontos de falha;
-* manutenção.
-
-Consequentemente, a redundância deverá ser aplicada apenas quando o benefício superar os custos introduzidos.
-
----
-
-# 28. Redundância e Complexidade
-
-A redundância excessiva poderá introduzir novos riscos.
-
-Sistemas redundantes deverão ser suficientemente independentes para que a redundância tenha valor real.
-
-Não deverá ser considerada redundância útil a simples duplicação de componentes que partilhem o mesmo:
-
-* sensor físico;
-* alimentação;
-* ligação;
-* erro de configuração;
-* ponto de falha;
-* ambiente de falha comum.
-
----
-
-# 29. Degradação Controlada
-
-Quando uma parte redundante falhar, o Aerus deverá procurar manter a operação com os recursos restantes sempre que isso for seguro.
-
-A perda de uma fonte de informação não deverá provocar automaticamente uma emergência quando existirem outras fontes suficientemente confiáveis.
-
-A decisão deverá considerar:
-
-* quantidade de fontes disponíveis;
-* qualidade dos dados;
-* divergência entre fontes;
-* criticidade da grandeza;
-* estado atual da aeronave.
-
----
-
-# 30. Isolamento de Falhas
-
-Uma falha deverá ser localizada sempre que possível.
-
-O sistema deverá procurar determinar:
-
-1. qual o componente afetado;
-2. qual a função afetada;
-3. quais as funções dependentes;
-4. se existem fontes redundantes;
-5. se a operação pode continuar;
-6. se é necessário executar um procedimento de segurança.
-
----
-
-# 31. Falha de um Elemento dentro de um Grupo
-
-A falha de um elemento físico pertencente a um Grupo Computacional não deverá ser automaticamente interpretada como falha total do Grupo.
-
-Por exemplo, se o ESP32-S possuir vários microcontroladores e apenas um falhar, os restantes poderão continuar a executar as suas funções.
-
-A consequência dependerá da distribuição dos sensores e das funções entre os elementos.
-
----
-
-# 32. Configuração por Aeronave
-
-A quantidade de redundância poderá variar entre diferentes aeronaves.
-
-Uma aeronave poderá possuir:
-
-* dois sensores para determinada grandeza;
-* três ou mais sensores para outra;
-* múltiplos ESP32-S;
-* diferentes configurações de atuadores;
-* diferentes níveis de reserva.
-
-A configuração deverá ser definida antes da compilação e integração do Aerus.
-
----
-
-# 33. Princípio de Não-Duplicação Desnecessária
-
-O Aerus não deverá duplicar uma função simplesmente porque é tecnicamente possível.
-
-Antes de introduzir redundância deverá ser avaliado:
-
-* qual o risco reduzido;
-* qual a falha coberta;
-* qual a independência obtida;
-* qual o custo físico;
-* qual o custo computacional;
-* qual a complexidade adicional;
-* se existe outro mecanismo de recuperação mais eficiente.
-
----
-
-# 34. Relação com FailSafe/FailSecure
-
-A redundância e o isolamento deverão permitir que o sistema entre em procedimentos FailSafe/FailSecure de forma controlada.
-
-O domínio de segurança deverá utilizar as fontes de informação disponíveis para determinar a resposta apropriada.
-
-Nem toda falha deverá resultar na mesma ação.
-
-A resposta poderá variar desde a continuação da missão até um procedimento de recuperação ou aterragem de emergência.
-
----
-
-# 35. Limites do Documento
-
-Este documento não define:
-
-* número final de sensores;
-* modelos específicos;
-* fabricantes específicos;
-* arquitetura elétrica final;
-* algoritmos de fusão de sensores;
-* lógica de votação;
-* regras completas de FailSafe/FailSecure;
-* procedimentos de emergência;
-* configuração final do ESP32-FS_A;
-* quantidade definitiva de elementos ESP32-S;
-* redundância específica de cada atuador.
-
-Esses elementos serão definidos nas especificações correspondentes.
-
----
-
-# 36. Referências
-
-- HW-001 — Arquitetura_de_Hardware
-- HW-002 — Grupos_Computacionais
-- HW-003 — Distribuicao_de_Hardware
-- HW-005 — Alimentacao_e_Distribuicao_de_Energia
-- HW-006 — Interfaces_de_Comunicacao
-- HW-007 — Interfaces_de_Perifericos
-- HW-009 — Expansibilidade_e_Configuracao_de_Hardware
-- SYS-002 — Arquitetura_Computacional
-- SYS-006 — Gestao_de_Estados
-- SYS-007 — Modos_de_Funcionamento
-- SEN — Especificações de Sensores
-- ACT — Especificações de Atuadores
-- SEC — Especificações de Segurança
-- ENE — Especificações de Energia
+# 7. Referências
+
+* HW-001 — Arquitetura de Hardware
+* HW-002 — Grupos Computacionais
+* HW-003 — Distribuição de Hardware
+* HW-004 — Interfaces Elétricas
+* HW-005 — Alimentação e Distribuição de Energia
+* HW-006 — Interfaces de Comunicação
+* HW-007 — Interfaces de Periféricos
+* HW-009 — Expansibilidade e Configuração de Hardware
+* docs/Esquemas/Arquitetura-Computacional.md

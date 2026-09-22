@@ -1,622 +1,189 @@
-# HW-009 — Expansibilidade_e_Configuracao_de_Hardware
+# HW-009 — Expansibilidade e Configuração de Hardware
 
-| Campo             | Valor                                      |
-| ----------------- | ------------------------------------------ |
-| **Código**        | HW-009                                     |
-| **Título**        | Expansibilidade e Configuração de Hardware |
-| **Versão**        | 1.0                                        |
-| **Estado**        | Em Desenvolvimento                         |
-| **Autor**         | ShegaPT                                    |
-| **Classificação** | Especificação de Hardware                  |
+| Campo | Valor |
+| --- | --- |
+| **Código** | HW-009 |
+| **Título** | Expansibilidade e Configuração de Hardware |
+| **Versão** | 2.0 |
+| **Estado** | Em Desenvolvimento |
+| **Autor** | ShegaPT |
+| **Classificação** | Especificação de Hardware |
+| **Referência** | docs/Esquemas/Arquitetura-Computacional.md |
 
 ---
 
 # 1. Objetivo
 
-O presente documento define os princípios utilizados pelo Aerus para permitir diferentes configurações de hardware sem alterar a arquitetura fundamental do sistema.
+O presente documento define como a plataforma AERUS-TELLUS se adapta a diferentes aeronaves de asa fixa — dimensões, sensores, atuadores, propulsão, rádios e implementos — sem reescrever o sistema: parametrização pré-compilação, código comum, crescimento horizontal (mais elementos no grupo), vertical (novos grupos) e funcional (novos módulos), com compatibilidade preservada.
 
-O Aerus deverá ser concebido como uma plataforma configurável capaz de equipar diferentes aeronaves de asa fixa, com diferentes dimensões, sensores, atuadores, sistemas de propulsão e implementos.
-
-A configuração específica de cada aeronave deverá determinar os elementos físicos efetivamente utilizados.
+Explica o que é configuração (características da aeronave), o que é arquitetura (responsabilidades e autoridade, inegociáveis) e como evoluir PCB, processadores e periféricos sem quebrar interfaces.
 
 ---
 
-# 2. Princípio de Configurabilidade
+# 2. Âmbito
 
-O Aerus não deverá ser desenvolvido como um conjunto de versões de software específicas para cada aeronave.
+Abrange:
 
-A mesma base de software deverá poder ser configurada para diferentes plataformas através de parâmetros e configurações específicas.
+* configuração pré-compilação e código paramétrico;
+* quantidade e distribuição de elementos por grupo e por PCB da família;
+* escolha RP2040 vs. RP2350B/2354B, variante B, Flash/PSRAM e personalidades do COMPUTE-NODE;
+* expansão (elementos, grupos, periféricos, rádios, implementos), cluster e GCV modular;
+* validação da configuração, compatibilidade e escalabilidade.
 
-O objetivo é evitar a criação de código independente para cada aeronave quando a diferença entre elas puder ser representada através de configuração.
+Não abrange:
 
----
-
-# 3. Configuração Antes da Compilação
-
-Antes da compilação do Aerus deverão ser introduzidas as características específicas da aeronave que irá utilizar o sistema.
-
-Essas informações poderão definir, entre outros elementos:
-
-* sensores existentes;
-* atuadores existentes;
-* quantidade de elementos computacionais;
-* distribuição dos sensores;
-* distribuição dos atuadores;
-* parâmetros físicos;
-* características aerodinâmicas;
-* características da propulsão;
-* limites operacionais;
-* frequências;
-* configurações de comunicação;
-* parâmetros matemáticos;
-* funcionalidades disponíveis.
-
-O resultado será um sistema compilado especificamente para a configuração da aeronave.
+* valores de configuração de uma aeronave concreta (documentos de configuração por modelo);
+* protocolo e mensagens (ver COM), sensores/atuadores concretos (ver SEN, ACT, IMP).
 
 ---
 
-# 4. Código Paramétrico
+# 3. Descrição
 
-Sempre que duas aeronaves diferirem apenas através de parâmetros, o Aerus deverá utilizar código paramétrico em vez de manter implementações independentes.
-
-Exemplo conceptual:
-
-```text
-                Aerus
-                  │
-          ┌───────┴───────┐
-          │ Código comum  │
-          └───────┬───────┘
-                  │
-        Configuração da aeronave
-           ┌──────┼──────┐
-           ▼      ▼      ▼
-        Modelo A Modelo B Modelo C
-```
-
-A mesma implementação poderá assim operar diferentes configurações físicas.
-
----
-
-# 5. Grupos Computacionais Variáveis
-
-Os Grupos Computacionais constituem conceitos arquiteturais e não devem ser interpretados como uma quantidade fixa de componentes físicos.
-
-Por exemplo, o Grupo Computacional ESP32-S poderá ser constituído por:
-
-* um ESP32;
-* vários ESP32;
-* diferentes distribuições de sensores entre os ESP32.
-
-O mesmo princípio aplica-se aos restantes Grupos Computacionais.
-
----
-
-# 6. Quantidade de Elementos
-
-A quantidade de elementos físicos pertencentes a cada Grupo Computacional deverá ser determinada pela configuração da aeronave.
-
-Exemplo:
-
-```text
-Aeronave A
-
-ESP32-S
- └── ESP32-S_01
-
-
-Aeronave B
-
-ESP32-S
- ├── ESP32-S_01
- ├── ESP32-S_02
- └── ESP32-S_03
-```
-
-Ambas continuam a possuir o mesmo Grupo Computacional ESP32-S.
-
----
-
-# 7. Distribuição de Sensores
-
-A distribuição dos sensores entre os elementos ESP32-S deverá poder variar de acordo com a aeronave.
-
-A configuração deverá permitir determinar qual elemento é responsável por cada sensor.
-
-Exemplo:
-
-```text
-              ESP32-S
-                 │
-       ┌─────────┴─────────┐
-       ▼                   ▼
- ESP32-S_01           ESP32-S_02
-       │                   │
- ┌─────┼─────┐       ┌─────┼─────┐
- ▼     ▼     ▼       ▼     ▼     ▼
-IMU   GPS   BARO    MAG   TEMP   AirData
-```
-
-A distribuição deverá procurar reduzir cablagem, interferências e carga individual dos elementos.
-
----
-
-# 8. Distribuição de Atuadores
-
-Os atuadores deverão igualmente poder ser distribuídos entre diferentes elementos ESP32-A.
-
-A configuração deverá determinar qual elemento controla cada atuador.
-
-Não deverá ser necessário que todos os atuadores sejam controlados por um único microcontrolador.
-
----
-
-# 9. Expansão do Número de Elementos
-
-A arquitetura deverá permitir adicionar elementos dentro de um Grupo Computacional quando a capacidade de um único elemento deixar de ser suficiente.
-
-A expansão poderá ser necessária devido a:
-
-* aumento do número de sensores;
-* aumento do número de atuadores;
-* aumento da frequência de aquisição;
-* limitações de processamento;
-* limitações de entradas/saídas;
-* distribuição física da aeronave;
-* requisitos de redundância.
-
----
-
-# 10. Novos Grupos Computacionais
-
-Os cinco Grupos Computacionais atualmente considerados como base inicial constituem o mínimo inicial da arquitetura.
-
-A arquitetura não deverá impedir a criação futura de novos Grupos Computacionais obrigatórios.
-
-A introdução de um novo Grupo deverá ocorrer quando existir uma necessidade funcional, de segurança, processamento, comunicação ou outro requisito que justifique a sua existência.
-
----
-
-# 11. Evolução da Plataforma
-
-A arquitetura deverá permitir que o hardware utilizado num Grupo Computacional seja alterado ao longo da evolução do projeto.
-
-Por exemplo, um Grupo Computacional atualmente implementado com RaspberryPi poderá futuramente utilizar outro hardware com capacidade equivalente ou superior.
-
-A identidade arquitetural do Grupo não deverá depender do fabricante ou modelo específico do hardware.
-
-Assim, **Grupo Computacional RaspberryPi** representa uma entidade arquitetural, independentemente de qual hardware físico venha futuramente a implementar essa função.
-
----
-
-# 12. Hardware de Processamento
-
-A substituição do hardware de processamento deverá ser possível desde que o novo hardware cumpra os requisitos funcionais e de desempenho definidos para o respetivo Grupo Computacional.
-
-Exemplos de evolução possíveis incluem:
-
-* alteração de modelo de RaspberryPi;
-* utilização de vários RaspberryPi;
-* utilização de um sistema computacional equivalente;
-* utilização de hardware de maior capacidade;
-* utilização de uma arquitetura computacional distribuída.
-
-A decisão concreta deverá ser definida durante o desenvolvimento da plataforma.
-
----
-
-# 13. Cluster Computacional
-
-Um Grupo Computacional poderá, quando necessário, ser implementado através de vários computadores trabalhando conjuntamente.
-
-Isto não altera necessariamente a identidade do Grupo Computacional.
-
-Por exemplo:
-
-```text
-       Grupo Computacional RaspberryPi
-                    │
-          ┌─────────┼─────────┐
-          ▼         ▼         ▼
-      Computador  Computador  Computador
-          01         02         03
-```
-
-A distribuição interna poderá ser utilizada para aumentar capacidade, disponibilidade ou isolamento de funções.
-
----
-
-# 14. Expansão sem Alteração Conceptual
-
-A adição de elementos dentro de um Grupo Computacional deverá, sempre que possível, ocorrer sem alteração do conceito arquitetural externo.
-
-Os restantes grupos deverão continuar a comunicar com o Grupo Computacional de acordo com as interfaces definidas.
-
-A complexidade interna do grupo deverá permanecer isolada sempre que possível.
-
----
-
-# 15. Configuração de Periféricos
-
-A configuração da aeronave deverá indicar os periféricos presentes.
-
-Para cada periférico poderão ser definidos parâmetros como:
-
-* identificação;
-* tipo;
-* interface;
-* elemento responsável;
-* frequência de aquisição;
-* frequência de comunicação;
-* limites;
-* calibração;
-* redundância;
-* dependências;
-* estado inicial.
-
----
-
-# 16. Configuração de Sensores
-
-A configuração deverá permitir determinar quais os sensores instalados na aeronave.
-
-Um modelo poderá possuir, por exemplo:
-
-```text
-IMU_A
-IMU_B
-GPS_A
-GPS_B
-BARO_A
-BARO_B
-TEMP_A
-TEMP_B
-```
-
-Enquanto outro modelo poderá possuir uma quantidade diferente.
-
-A ausência ou presença de determinado sensor deverá ser tratada como uma característica de configuração e não como uma versão completamente diferente do Aerus.
-
----
-
-# 17. Configuração de Atuadores
-
-O mesmo princípio deverá ser aplicado aos atuadores.
-
-Uma aeronave poderá possuir diferentes:
-
-* superfícies de controlo;
-* servos;
-* motores;
-* ESC;
-* mecanismos auxiliares;
-* atuadores específicos.
-
-A configuração deverá determinar quais os elementos existentes e como são controlados.
-
----
-
-# 18. Configuração Aerodinâmica
-
-Os parâmetros físicos e aerodinâmicos da aeronave deverão poder ser configurados.
-
-Dependendo do modelo, poderão existir parâmetros relacionados com:
-
-* massa;
-* distribuição de massa;
-* centro de gravidade;
-* dimensões;
-* superfícies de controlo;
-* características aerodinâmicas;
-* propulsão;
-* limites de voo;
-* outras características necessárias aos cálculos.
-
-Esses parâmetros serão utilizados pelos módulos que necessitem deles.
-
----
-
-# 19. Configuração da Propulsão
-
-A plataforma deverá permitir diferentes configurações de propulsão.
-
-A configuração deverá poder definir os parâmetros necessários para o controlo e monitorização do sistema de propulsão.
-
-O Aerus não deverá assumir que todas as aeronaves utilizam exatamente o mesmo motor, ESC ou configuração propulsiva.
-
----
-
-# 20. Configuração de Redundância
-
-A redundância deverá igualmente ser configurável.
-
-Uma determinada aeronave poderá possuir:
-
-* dois sensores equivalentes;
-* três sensores equivalentes;
-* diferentes elementos ESP32-S;
-* diferentes combinações de sensores principais e de segurança.
-
-A configuração deverá informar o sistema sobre a arquitetura física efetivamente instalada.
-
----
-
-# 21. Configuração do Domínio de Segurança
-
-A existência e configuração dos elementos do domínio de segurança deverão ser definidas explicitamente.
-
-O ESP32-FS constitui uma componente fundamental da arquitetura.
-
-Os sensores diretamente ligados ao ESP32-FS deverão ser definidos de acordo com a configuração da aeronave.
-
-Outros elementos de segurança poderão ser adicionados quando necessário.
-
----
-
-# 22. Configuração de Comunicação
-
-A configuração deverá permitir determinar as ligações físicas existentes entre os diferentes elementos.
-
-Poderão ser definidos:
-
-* origem;
-* destino;
-* interface;
-* velocidade;
-* parâmetros de comunicação;
-* prioridade;
-* frequência;
-* mecanismos de recuperação.
-
-A especificação detalhada do protocolo pertence a `COM/`.
-
----
-
-# 23. Configuração de Frequências
-
-As frequências deverão poder ser configuradas de forma independente para diferentes periféricos e funções.
-
-Uma configuração poderá determinar:
-
-```text
-Sensor A → 100 Hz
-Sensor B → 50 Hz
-Sensor C → 20 Hz
-
-ESP32-S → comunicação geral → frequência definida
-```
-
-A frequência de um periférico não deverá obrigatoriamente determinar a frequência global do Grupo Computacional.
-
----
-
-# 24. Configuração de Módulos
-
-Nem todos os módulos de software necessitam de estar permanentemente ativos.
-
-A configuração deverá permitir identificar módulos necessários para determinada aeronave ou função.
-
-Durante a operação, o sistema poderá ainda ativar ou desativar módulos de acordo com o modo e estado atual.
-
----
-
-# 25. Otimização de Recursos
-
-A configuração deverá procurar evitar a utilização de recursos que não sejam necessários.
-
-Um módulo destinado exclusivamente a determinadas fases da operação poderá permanecer inativo durante as restantes fases.
-
-Isto permitirá utilizar a capacidade computacional disponível para os módulos atualmente relevantes.
-
-Esta estratégia será especialmente importante em elementos com recursos limitados.
-
----
-
-# 26. Configuração e Compilação
-
-A configuração da aeronave deverá ser conhecida antes da compilação.
-
-O processo conceptual será:
+## 3.1 Configuração antes da compilação, código comum sempre
 
 ```text
 Características da aeronave
-          │
-          ▼
-Configuração Aerus
-          │
-          ▼
-Validação da configuração
-          │
-          ▼
-Compilação
-          │
-          ▼
-Aerus configurado
-          │
-          ▼
-Integração na aeronave
+  │
+  ▼
+Configuração AERUS (sensores, atuadores, elementos, frequências, limites, redes, energia)
+  │
+  ▼
+Validação (coerência, recursos, conflitos, arquitetura preservada)
+  │
+  ▼
+Compilação → AERUS configurado → integração na aeronave
 ```
 
-A configuração não deverá ser utilizada para alterar arbitrariamente as regras fundamentais do sistema.
-
----
-
-# 27. Validação da Configuração
-
-Antes da utilização da configuração deverá ser verificado se:
-
-* todos os sensores necessários estão definidos;
-* todos os atuadores necessários estão definidos;
-* os elementos computacionais necessários existem;
-* as ligações necessárias existem;
-* os parâmetros são válidos;
-* as frequências são compatíveis;
-* não existem conflitos de recursos;
-* a configuração é coerente com a arquitetura.
-
-Uma configuração inválida não deverá resultar numa compilação considerada válida.
-
----
-
-# 28. Configuração e Código
-
-A configuração deverá determinar o comportamento parametrizado do Aerus sem permitir alterar arbitrariamente a lógica fundamental do sistema.
-
-Deverá existir uma separação entre:
-
-**Código**
+A mesma base compila modelos distintos:
 
 ```text
-Lógica permanente do Aerus
+              AERUS (código comum)
+                      │
+         Configuração da aeronave
+           ┌──────────┼──────────┐
+           ▼          ▼          ▼
+        Modelo A   Modelo B   Modelo C
+        (mínimo)   (típico)   (redundante)
 ```
 
-e:
+Configuração nunca altera a lógica fundamental: separação de domínios, autoridade do FailSafe, validação Voo→Atuador, isolamento da visão por Router e disciplina das cinco redes.
 
-**Configuração**
+## 3.2 Grupos variáveis, arquitetura fixa
+
+| Grupo | O que varia por aeronave | O que nunca varia |
+| --- | --- | --- |
+| Sensorial | Nº de COMPUTE-SENSORIAL (RP2040), distribuição por baías, Master dedicado ou acumulado | Aquisição→normalização→publicação com qualidade em R1 |
+| Atuador | Nº de COMPUTE-ACTUATOR, versão RP2040 ou RP2350B por atuador | Validação e limites locais; retorno; estado seguro |
+| Voo/Navegação/Missão/Cálculo | Carga e período por núcleo do cluster; Missão com mais ou menos planeamento | Distribuição inicial dos 8 núcleos; serviço de Cálculo por IPC |
+| FailSafe | Nº de nós COMPUTE-NODE, sensores de reserva, diversidade | Autoridade máxima; avaliação independente; inibição |
+| Visão (GCV) | Câmara, codecs, presença de NPU futura, antena 5,8 GHz | Módulo i.MX + Router + carrier; nada de píxeis em R1 |
+| Comunicação | 2 ou 3 COMM-RF (5,8 GHz ± 2,4 GHz ± 868 MHz), potências, antenas | RJ45-RS como única fronteira; gestão por GCV/Master Geral |
+
+Exemplo:
 
 ```text
-Características específicas da aeronave
+Aeronave A (pequena): Sensorial 1 nó; Atuador 1; Cluster 1; GCV 1; COMM 5,8+2,4 GHz
+Aeronave B (grande):  Sensorial 5 nós + Master; Atuador 3; Cluster 1;
+                      FailSafe distribuído; GCV 1; COMM 5,8+2,4+868 MHz
+```
+
+## 3.3 Critérios de escolha de processador e PCB
+
+| Decisão | Critério | Resultado típico |
+| --- | --- | --- |
+| Nó sensorial/atuador simples | ≤30 GPIO, 4 ADC, 16 PWM, 8 PIO e folga de CPU/memória | COMPUTE-SENSORIAL / COMPUTE-ACTUATOR em RP2040 |
+| Nó exigente ou Master | FPU/DSP intensivo, >30 GPIO, 8 ADC, 24 PWM, 12 PIO, TrustZone, agregação | COMPUTE-NODE / COMPUTE-ACTUATOR em RP2350B/2354B |
+| Flash empilhada | Restrição de área, arranque robusto, disponibilidade | RP2354B (2 MB) face a RP2350B + Flash externa |
+| Cluster | Sempre que exista Voo+Navegação+Missão+Cálculo+Supervisão | COMPUTE-FLIGHT-CLUSTER 4 × RP2350B/2354B + Fabric + Flash/PSRAM |
+| Visão | Sempre que exista câmara e vídeo | COMPUTE-VISION-CARRIER modular (módulo i.MX+LPDDR+eMMC+PMIC+MIPI + Router + Ethernet/CAN/Power/System-Connector) |
+| Rádios | Por missão e alcance | COMM-RF 5,8 GHz (GCV via RJ45) + 2,4 GHz/868 MHz (Master Geral via RJ45) |
+
+O COMPUTE-NODE é genérico: a personalidade (Master Sensorial, Comunicação, FailSafe, Navegação remota) é firmware + configuração, com certificação separada por personalidade quando exigível.
+
+| Processador | Resumo para decisão |
+| --- | --- |
+| RP2040 | 2 × M0+ 133 MHz, 264 KB, 30 GPIO, 4 ADC, 16 PWM, 8 PIO — periferia determinística económica |
+| RP2350B/2354B | 2 × M33 150 MHz, FPU/DSP, 520 KB, 48 GPIO, 8 ADC, 24 PWM, 12 PIO, TrustZone, SHA-256 — nó principal e cluster |
+| i.MX 8M Plus MIMX8ML4DVNLZAB | 4 × A53 + M7 + GPU + ISP + NPU + VPU, MIPI CSI ×2, GbE ×2, CAN-FD ×2 — visão e IA embarcada |
+
+## 3.4 Expansão sem rotura
+
+* **Horizontal:** mais nós no grupo (ex.: SENSORIAL_05) sem alterar interfaces externas do grupo.
+* **Vertical:** novo grupo apenas com responsabilidade, autoridade, interfaces, dependências, tempos e segurança declarados.
+* **Funcional/física:** novos sensores, atuadores, COMM-RF, implementos e modos, com validação de impacto.
+
+A complexidade interna do grupo permanece isolada: os restantes grupos continuam a falar com ele pelas mesmas mensagens R1/R2.
+
+## 3.5 Configuração por domínio (checklist mínima)
+
+Sensores (tipo, interface, nó responsável, frequências de aquisição/comunicação, calibração, redundância); atuadores (tipo, nó, limites, PWM, retorno, estado seguro); aerodinâmica e propulsão (massa, centragem, superfícies, motor/ESC, limites); redundância (fontes, nós, reservas FailSafe); comunicação (R1/R2/R3/R4/R5, períodos, prioridades); energia (derivações, proteções, cortes); módulos (ativos por modo para otimizar CPU/energia). Implementos como sistemas externos: o veículo configura apenas as interfaces e os dados mínimos de voo (massa, caudal, carga, estado).
+
+## 3.6 Validação, compatibilidade e escalabilidade
+
+Configuração inválida (sensor em falta, recurso em conflito, frequência incompatível, arquitetura violada) nunca produz compilação válida. Evolução de PCB/processador que preserve responsabilidade e interfaces é alteração de implementação; introduzir ou remover responsabilidades é alteração arquitetural com revisão das especificações. Interfaces estáveis, abstração de hardware, parametrização e versões controladas preservam compatibilidade ao longo do crescimento.
+
+---
+
+# 4. Exemplos
+
+## Exemplo 1 — Crescer por sensores
+
+```text
+Nova sonda de ângulo de ataque → +1 COMPUTE-SENSORIAL_05 na asa
+  → configuração declara nó, interface SPI, 100 Hz, calibração
+  → R1 passa a incluir nova grandeza; Voo/Navegação consomem sem alterar código
+```
+
+## Exemplo 2 — Trocar atuação simples por exigente
+
+```text
+Flaps com sincronismo e diagnóstico → COMPUTE-ACTUATOR passa de RP2040 a RP2350B
+  → mesma interface R1 (comando/estado); apenas a configuração e o firmware mudam
+```
+
+## Exemplo 3 — Adicionar 868 MHz a frota existente
+
+```text
++1 COMM-RF 868 MHz via RJ45 ao Master Geral + antena na cauda
+  → configuração declara banda, períodos e prioridades R5
+  → R1/R2/R3/R4 inalterados; autonomia revista em ENE
 ```
 
 ---
 
-# 29. Configuração e Implementos
+# 5. Interfaces
 
-Os implementos deverão ser tratados como sistemas externos ao Aerus.
-
-A configuração da aeronave poderá indicar os tipos de interfaces necessárias para comunicação com implementos.
-
-A lógica específica do implemento deverá permanecer no próprio implemento.
-
-O Aerus deverá receber apenas a informação necessária para executar corretamente as funções relacionadas com o voo.
-
----
-
-# 30. Evolução de Implementos
-
-A arquitetura deverá permitir a introdução de novos implementos sem exigir uma reconstrução completa do sistema de voo.
-
-A comunicação entre Aerus e implemento deverá permitir que o Aerus determine as informações necessárias para adaptar o voo às características da missão.
-
-A especificação detalhada pertence a `IMP/`.
+| Interface de configuração | Conteúdo | Consumidor |
+| --- | --- | --- |
+| Mapa grupo↔elemento↔periférico | Que nó serve que sensor/atuador/rádio/câmara | Compilação, integração, manutenção |
+| Orçamento de recursos | GPIO/ADC/PWM/PIO, memória, CPU, barramento e energia por nó | Validação pré-compilação |
+| Períodos e prioridades R1/R2/R5 | Frequências, timeouts, descarte, anti-sobrecarga | COM + SYS |
+| Energia e proteções | Derivações, fusíveis/eFuses, cortes, sequência NXP | HW-005 |
+| Versões de PCB/firmware | COMPUTE-* e COMM-RF com revisões e personalidades | Rastreabilidade e ensaio |
 
 ---
 
-# 31. Compatibilidade
+# 6. Pontos em aberto
 
-Alterações internas de hardware não deverão quebrar automaticamente as interfaces arquiteturais existentes.
-
-Sempre que possível, a compatibilidade deverá ser preservada através de:
-
-* interfaces estáveis;
-* abstração de hardware;
-* configuração;
-* parametrização;
-* versões controladas de interfaces.
-
----
-
-# 32. Expansão Futura
-
-A arquitetura deverá permanecer aberta à introdução de novos:
-
-* sensores;
-* atuadores;
-* elementos computacionais;
-* Grupos Computacionais;
-* interfaces;
-* sistemas de segurança;
-* implementos;
-* funções.
-
-A introdução de qualquer nova função deverá, contudo, ser avaliada quanto ao impacto sobre os restantes componentes.
+| # | Ponto em aberto | Resolução |
+| --- | --- | --- |
+| 1 | Formato do ficheiro de configuração por aeronave e ferramenta de validação | Projeto de ferramental |
+| 2 | Matriz função→grupo→processador→núcleo→interface→protocolo→período→latência→prioridade→falha | SYS + COM + ensaio de carga |
+| 3 | Escolha RP2350B vs. RP2354B por nó, Flash/PSRAM e mecanismo de arranque/atualização | Disponibilidade + ensaio |
+| 4 | GCV: LPDDR/eMMC/PMIC finais, SO, pipeline, codecs e formato das deteções | NXP + COMM-RF 5,8 GHz |
+| 5 | Critérios de introdução de novos grupos e de novas personalidades do COMPUTE-NODE | Arquitetura + SEC |
+| 6 | Estratégia de ensaio por configuração (cobertura sem explosão combinatória) | Qualidade + certificação |
 
 ---
 
-# 33. Alterações de Hardware
+# 7. Referências
 
-A substituição de um componente físico não deverá ser considerada automaticamente uma alteração da arquitetura do Aerus.
-
-Deverá distinguir-se entre:
-
-### Alteração de implementação
-
-Substituição do hardware por outro equivalente sem alteração da responsabilidade arquitetural.
-
-### Alteração arquitetural
-
-Introdução ou remoção de responsabilidades, interfaces ou Grupos Computacionais.
-
-A segunda situação deverá exigir revisão das especificações relevantes.
-
----
-
-# 34. Escalabilidade
-
-O Aerus deverá suportar crescimento controlado da plataforma.
-
-Esse crescimento poderá ocorrer:
-
-* horizontalmente, através da adição de elementos dentro de um Grupo Computacional;
-* verticalmente, através da introdução de novos Grupos Computacionais;
-* funcionalmente, através de novos módulos;
-* fisicamente, através de novas configurações de aeronave.
-
----
-
-# 35. Princípio de Compatibilidade Arquitetural
-
-Uma nova configuração de hardware deverá manter os princípios fundamentais da arquitetura Aerus.
-
-A alteração de hardware não deverá eliminar:
-
-* a separação entre domínios;
-* a autoridade do ESP32-FS;
-* a independência necessária do domínio de segurança;
-* as interfaces estabelecidas;
-* os mecanismos de comunicação;
-* os princípios de redundância;
-* os limites definidos para os diferentes Grupos Computacionais.
-
----
-
-# 36. Limites do Documento
-
-Este documento não define:
-
-* modelos específicos de hardware;
-* fabricantes;
-* pinouts;
-* esquemas elétricos;
-* parâmetros aerodinâmicos concretos;
-* configuração de uma aeronave específica;
-* estrutura detalhada do ficheiro de configuração;
-* protocolo TLV;
-* algoritmos de controlo;
-* algoritmos de navegação;
-* regras de segurança;
-* implementação dos implementos.
-
-Esses elementos pertencem às respetivas especificações.
-
----
-
-# 37. Referências
-
-- HW-001 — Arquitetura_de_Hardware
-- HW-002 — Grupos_Computacionais
-- HW-003 — Distribuicao_de_Hardware
-- HW-004 — Interfaces_Eletricas
-- HW-005 — Alimentacao_e_Distribuicao_de_Energia
-- HW-006 — Interfaces_de_Comunicacao
-- HW-007 — Interfaces_de_Perifericos
-- HW-008 — Redundancia_e_Isolamento_de_Hardware
-- SYS-002 — Arquitetura_Computacional
-- SYS-003 — Arquitetura_de_Software
-- SYS-004 — Arquitetura_de_Hardware
-- SYS-007 — Modos_de_Funcionamento
-- SEN — Especificações de Sensores
-- ACT — Especificações de Atuadores
-- COM — Especificações de Comunicações
-- IMP — Especificações de Implementos
-- MAT — Especificações Matemáticas
+* HW-001 — Arquitetura de Hardware
+* HW-002 — Grupos Computacionais
+* HW-003 — Distribuição de Hardware
+* HW-004 — Interfaces Elétricas
+* HW-005 — Alimentação e Distribuição de Energia
+* HW-006 — Interfaces de Comunicação
+* HW-007 — Interfaces de Periféricos
+* HW-008 — Redundância e Isolamento de Hardware
+* docs/Esquemas/Arquitetura-Computacional.md

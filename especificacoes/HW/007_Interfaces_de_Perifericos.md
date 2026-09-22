@@ -1,586 +1,195 @@
-# HW-007 — Interfaces_de_Perifericos
+# HW-007 — Interfaces de Periféricos
 
-| Campo             | Valor                     |
-| ----------------- | ------------------------- |
-| **Código**        | HW-007                    |
-| **Título**        | Interfaces de Periféricos |
-| **Versão**        | 1.0                       |
-| **Estado**        | Em Desenvolvimento        |
-| **Autor**         | ShegaPT                   |
+| Campo | Valor |
+| --- | --- |
+| **Código** | HW-007 |
+| **Título** | Interfaces de Periféricos |
+| **Versão** | 2.0 |
+| **Estado** | Em Desenvolvimento |
+| **Autor** | ShegaPT |
 | **Classificação** | Especificação de Hardware |
+| **Referência** | docs/Esquemas/Arquitetura-Computacional.md |
 
 ---
 
 # 1. Objetivo
 
-O presente documento define os princípios de integração física e funcional entre os Grupos Computacionais do Aerus e os periféricos externos.
+O presente documento define como os periféricos — sensores, atuadores e controladores, câmara, placas rádio COMM-RF, sistemas auxiliares e implementos — se ligam fisicamente aos grupos computacionais e às PCB da família (COMPUTE-SENSORIAL, COMPUTE-ACTUATOR, COMPUTE-NODE, COMPUTE-FLIGHT-CLUSTER, COMPUTE-VISION-CARRIER e COMM-RF).
 
-São considerados periféricos, entre outros:
-
-* sensores;
-* atuadores;
-* controladores eletrónicos;
-* sistemas auxiliares;
-* interfaces externas;
-* implementos.
-
-A especificação individual de cada periférico deverá permanecer nas respetivas especificações.
+Explica a regra de atribuição (cada periférico tem um grupo responsável), as frequências de aquisição face às frequências de comunicação, a agregação, a qualidade dos dados, o comando verificado com retorno, a via de emergência FailSafe e a integração de implementos externos.
 
 ---
 
-# 2. Princípio Geral
+# 2. Âmbito
 
-Cada periférico deverá ser associado ao Grupo Computacional responsável pela sua aquisição, controlo ou supervisão.
+Abrange:
 
-A ligação física de um periférico não determina, por si só, a autoridade funcional sobre o sistema.
+* sensores → Grupo Sensorial (RP2040 + Master RP2350B);
+* atuadores/ESC → Grupo Atuador (RP2040 ou RP2350B);
+* câmara MIPI → GCV (i.MX via COMPUTE-VISION-CARRIER);
+* rádios 5,8 GHz / 2,4 GHz / 868 MHz → Grupo Comunicação via RJ45-RS (GCV gere 5,8 GHz; Master Geral gere 2,4 GHz e 868 MHz);
+* sensores de reserva → Grupo FailSafe; periféricos auxiliares e implementos;
+* inicialização, perda, identificação, configuração física e manutenção.
 
-A arquitetura deverá manter separadas:
+Não abrange:
 
-* aquisição de informação;
-* processamento;
-* controlo;
-* atuação;
-* segurança.
+* níveis ao pino e fichas (ver HW-004);
+* energia (ver HW-005);
+* protocolo e redes (ver HW-006);
+* sensores/atuadores concretos (ver SEN, ACT) nem implementos concretos (ver IMP).
 
 ---
 
-# 3. Sensores
+# 3. Descrição
 
-Na arquitetura atualmente definida, os sensores são ligados diretamente ao Grupo Computacional ESP32-S.
+## 3.1 Regra de atribuição
 
-```text id="v8y2cp"
-              ┌─────────────┐
-Sensor 1 ────►│             │
-Sensor 2 ────►│   ESP32-S   │
-Sensor 3 ────►│             │
-Sensor N ────►│             │
-              └─────────────┘
+| Periférico | Grupo responsável | PCB | Processador que atende |
+| --- | --- | --- | --- |
+| Sensores de voo/missão (IMU, magnetómetro, baro, GPS principal, Pitot, temperatura, sonda) | Sensorial | COMPUTE-SENSORIAL (+ Master COMPUTE-NODE) | RP2040 adquire; RP2350B agrega/valida |
+| Servos, superfícies, motores via ESC, auxiliares | Atuador | COMPUTE-ACTUATOR | RP2040 (simples) ou RP2350B (exigente) |
+| Sensores de reserva (GPS/IMU/baro/temperatura de emergência) | FailSafe/Supervisão | COMPUTE-NODE dedicado | RP2350B |
+| Câmara | Visão (GCV) | COMPUTE-VISION-CARRIER | i.MX 8M Plus (píxeis) + Router RP2350 (gestão) |
+| Placas rádio 5,8 / 2,4 / 868 MHz | Comunicação (com GCV para 5,8 GHz e Master Geral para 2,4/868) | COMM-RF via RJ45-RS | RP2350 gestores; i.MX produz o stream |
+| Auxiliares e implementos | Missão/Comunicação (integração), Voo/FailSafe (limites) | COMPUTE-NODE de integração | RP2350B |
+
+A ligação física nunca confere autoridade: um implemento ligado a um nó de integração não comanda o voo; a câmara ligada ao GCV não comanda atuadores.
+
+## 3.2 Sensores no Grupo Sensorial
+
+```text
+Sensor 1 ──┐
+Sensor 2 ──┼──► COMPUTE-SENSORIAL (RP2040) ──► CAN-Principal R1 ──► Master Geral
+Sensor 3 ──┤      (filtra, calibra, normaliza, valida)
+Sensor N ──┘
 ```
 
-O ESP32-S é responsável pela aquisição e tratamento inicial dos dados dos sensores associados.
+Capacidades de referência do RP2040 (30 GPIO, 4 ADC, 16 PWM, 8 PIO, UART/SPI/I2C ×2, USB 1.1, 264 KB, 2 × M0+ a 133 MHz): suficientes para adquirir IMU por SPI, magnetómetro por I2C, GPS por UART, pressões por ADC/SPI e ainda gerar protocolos dedicados por PIO. Quando o conjunto exigir fusão local, buffers grandes ou TrustZone, o Master COMPUTE-NODE em RP2350B (48 GPIO, 8 ADC, 24 PWM, 12 PIO, 520 KB, FPU/DSP, 2 × M33 a 150 MHz) assume a agregação.
 
----
+**Aquisição face a comunicação:**
 
-# 4. Distribuição dos Sensores
-
-Um Grupo Computacional ESP32-S poderá possuir vários elementos físicos.
-
-Consequentemente, os sensores poderão ser distribuídos entre diferentes elementos ESP32-S de acordo com a configuração da aeronave.
-
-A distribuição deverá considerar:
-
-* localização física;
-* frequência de aquisição;
-* quantidade de sensores;
-* capacidade de processamento;
-* requisitos temporais;
-* necessidades elétricas.
-
----
-
-# 5. Frequência de Aquisição
-
-Cada sensor poderá possuir uma frequência de aquisição própria.
-
-O elemento ESP32-S responsável deverá cumprir a frequência definida para cada periférico individualmente.
-
-Assim:
-
-```text id="p6f5dn"
-Sensor A ──► 100 Hz
-Sensor B ──► 50 Hz
-Sensor C ──► 20 Hz
-Sensor D ──► 10 Hz
+```text
+Sensor A ─► 100 Hz ┐
+Sensor B ─► 50 Hz  ├─► nó acumula ─► pacote R1 ao período definido (ex.: 20 Hz)
+Sensor C ─► 20 Hz  ┘
 ```
 
-As diferentes aquisições poderão ser posteriormente agregadas para transmissão ao restante sistema.
+Cada sensor tem a sua frequência; o grupo tem o seu período de publicação. A estrutura das mensagens pertence a COM.
 
----
+**Estado e qualidade:** cada periférico declara presença, inicialização, validade, degradação, ausência de resposta e incoerência. Valor adquirido sem validação não é valor publicado: gama, coerência cruzada, frescura e diagnóstico do canal condicionam a publicação, com a qualidade a acompanhar o dado.
 
-# 6. Agregação de Dados
+**Redundância:** a arquitetura suporta N sensores para a mesma grandeza, em nós distintos e, quando a criticidade o justificar, de fabricantes/tecnologias distintos (ver HW-008). A fusão e a votação pertencem a MAT/SEN/SEC.
 
-O ESP32-S deverá poder acumular os dados provenientes dos sensores associados e construir mensagens ou pacotes destinados aos restantes Grupos Computacionais.
+## 3.3 Atuadores no Grupo Atuador
 
-A frequência de aquisição individual dos sensores não deverá ser confundida com a frequência de comunicação entre hardwares.
-
-```text id="h0v6x2"
-Sensor A ─┐
-Sensor B ─┤
-Sensor C ─┼──► ESP32-S ───► Pacote ───► Sistema
-Sensor D ─┘
+```text
+Master Geral (Voo, via R1)
+  │
+  ▼
+COMPUTE-ACTUATOR ──► andar de potência / controlador / ESC ──► atuador
+  │                         │
+  │◄── retorno (posição, rotação, corrente, estado) ──◄──────┘
+  │
+  └──► estado + diagnóstico em R1
 ```
 
-A definição da estrutura das mensagens pertence a `COM/`.
+Ciclo de comando:
 
----
+1. receber; 2. verificar validade e autenticidade; 3. verificar limites do atuador; 4. converter para PWM/GPIO/série; 5. executar; 6. ler retorno; 7. publicar estado.
 
-# 7. Estado dos Sensores
+Versão RP2040 para atuação simples; versão RP2350B quando exista cinemática, sincronismo multi-eixo, diagnóstico pesado ou necessidade de TrustZone. Motores via ESC: o ESC é a interface de potência; o retorno (rotação, corrente, tensão, temperatura, estado) é lido pelo mesmo COMPUTE-ACTUATOR. Limites (posição, velocidade, corrente, potência) são impostos localmente — nenhum comando fora de limites é executado.
 
-O sistema deverá ser capaz de determinar o estado dos sensores quando essa informação estiver disponível.
+## 3.4 Câmara e GCV
 
-Poderão ser considerados:
-
-* ativo;
-* inativo;
-* inicializando;
-* válido;
-* inválido;
-* degradado;
-* sem resposta;
-* com dados inconsistentes.
-
-Os estados concretos dependem do tipo de sensor.
-
----
-
-# 8. Qualidade dos Dados
-
-A aquisição de um valor não implica automaticamente que esse valor seja válido.
-
-Sempre que aplicável, o ESP32-S deverá ser capaz de identificar condições como:
-
-* ausência de dados;
-* dados fora dos limites;
-* dados inconsistentes;
-* falha de comunicação com o periférico;
-* frequência de atualização insuficiente;
-* comportamento anormal.
-
-A informação relativa à qualidade dos dados deverá acompanhar os dados quando necessária.
-
----
-
-# 9. Sensores Redundantes
-
-A arquitetura deverá permitir a utilização de múltiplos sensores para medir a mesma grandeza.
-
-A utilização de sensores redundantes poderá permitir:
-
-* comparação;
-* validação;
-* deteção de divergências;
-* aumento da disponibilidade;
-* deteção de falhas.
-
-A estratégia matemática e lógica para combinar ou validar esses dados será definida em `MAT/`, `SEN/` e `SEC/`, conforme aplicável.
-
----
-
-# 10. Atuadores
-
-Os atuadores utilizados na operação normal são controlados pelo Grupo Computacional ESP32-A.
-
-```text id="f7z9qc"
-              ┌─────────────┐
-              │   ESP32-A   │
-              └──────┬──────┘
-                     │
-          ┌──────────┼──────────┐
-          ▼          ▼          ▼
-       Atuador    Atuador    Atuador
-          1          2          N
+```text
+Câmara ─FFC MIPI CSI curto─► módulo i.MX (ISP→CPU/GPU/NPU→VPU)
+  → 720p60 interno + 720p30 para terra via Router→RJ45→COMM-RF 5,8 GHz
+  → em R1 apenas metadados: estado, fps, latência, temperatura, deteções futuras
 ```
 
-O ESP32-A recebe comandos provenientes do RaspberryPi e converte esses comandos para os sinais necessários ao controlo dos atuadores.
+O RP2350 Router trata de presença da câmara, relógio, energia, watchdog do SoC, temperatura, armazenamento e publicação filtrada. O i.MX nunca é exposto ao CAN-Principal nem aos rádios sem passar pelo Router.
 
----
+## 3.5 Rádios COMM-RF e sensores de reserva
 
-# 11. Comandos de Atuadores
-
-O RaspberryPi deverá enviar ao ESP32-A comandos de controlo em representação adequada ao sistema.
-
-O ESP32-A deverá:
-
-1. receber o comando;
-2. verificar se o comando é válido;
-3. verificar os limites aplicáveis;
-4. converter o comando para a interface do atuador;
-5. executar o comando;
-6. obter *feedback* quando disponível;
-7. disponibilizar o estado resultante ao sistema.
-
-O ESP32-A não deverá executar diretamente um comando que esteja fora dos limites definidos para o respetivo atuador.
-
----
-
-# 12. Feedback dos Atuadores
-
-Sempre que possível, os atuadores deverão fornecer informação de retorno.
-
-O *feedback* poderá ser obtido através de:
-
-* posição;
-* velocidade;
-* rotação;
-* carga;
-* corrente;
-* estado interno;
-* informação disponibilizada pelo controlador;
-* outro mecanismo apropriado.
-
-A arquitetura não exige a utilização de um encoder específico.
-
-O método de obtenção do *feedback* dependerá do atuador.
-
----
-
-# 13. Estado Final do Atuador
-
-Quando um atuador disponibilizar informação suficiente para determinar a sua posição ou estado final, essa informação deverá ser utilizada pelo ESP32-A.
-
-O sistema poderá manter, quando aplicável, a última posição ou condição conhecida do atuador.
-
-Esta informação poderá ser relevante após:
-
-* paragem;
-* perda de comando;
-* alteração de estado;
-* reinicialização;
-* entrada em condição de segurança.
-
----
-
-# 14. Atuadores com Controladores Próprios
-
-Alguns atuadores poderão possuir eletrónica própria de controlo.
-
-Nesse caso, o ESP32-A deverá comunicar com essa eletrónica através da interface adequada.
-
-Exemplo conceptual:
-
-```text id="x6h8rf"
-RaspberryPi
-     │
-     ▼
- ESP32-A
-     │
-     ▼
-Controlador
-do Atuador
-     │
-     ▼
- Atuador
+```text
+GCV ─RJ45─► COMM-RF 5,8 GHz ─TX─► terra (vídeo 720p30 + telemetria descendente)
+Master Geral ─RJ45─► COMM-RF 2,4 GHz ─RX─► comando ascendente validado ─► R1
+Master Geral ─RJ45─► COMM-RF 868 MHz ─TX/RX─► telemetria longo alcance
 ```
 
-O controlador do atuador poderá disponibilizar informação adicional utilizada pelo ESP32-A.
+Sensores de reserva do FailSafe (GPS, IMU, barómetro, temperatura de emergência, a completar por análise): ligados a COMPUTE-NODE dedicados, independentes dos principais e, quando aplicável, de fabricantes distintos; alimentam avaliação de emergência e, quando previsto, baliza obrigatória. Em operação normal não são fonte primária de voo.
+
+## 3.6 Via de emergência e auxiliares
+
+Em operação normal: `Missão → (pede) → Voo → (valida) → Atuador`. Em emergência, o FailSafe pode inibir o Atuador normal e ordenar atuação mínima por via independente (detalhe físico por atuador em ACT + HW-008). Auxiliares e implementos (ex.: pulverização com massa, caudal e carga restante) integram-se por nós dedicados: o veículo recebe apenas o necessário para voar em segurança (massa, centragem, limites); a função do implemento permanece no implemento (ver IMP).
+
+## 3.7 Inicialização, perda, identificação e manutenção
+
+Cada periférico declara sequência de inicialização (presença, energia, comunicação, configuração, validade) e só é dado como operacional após passar nos testes. A perda é identificável e graduada (registo, degradação, mudança de modo, procedimento de segurança). Cada periférico possui identidade (tipo, capacidades, parâmetros, interface, configuração) e configuração física explícita (`Sensor A → SENSORIAL_01; Atuador B → ACTUATOR_02`), variável por aeronave (HW-009). Fichas polarizadas, etiquetas e pontos de teste permitem substituição rápida sem redesenhar o sistema.
 
 ---
 
-# 15. Motores e ESC
+# 4. Exemplos
 
-Quando um motor for controlado através de um ESC, o ESC constitui uma interface entre o ESP32-A e o sistema de propulsão.
+## Exemplo 1 — Pitot redundante
 
-O ESP32-A deverá enviar ao ESC o comando adequado e, quando disponível, receber informação de retorno.
-
-O *feedback* disponibilizado pelo ESC poderá incluir, conforme o equipamento:
-
-* rotação;
-* estado;
-* corrente;
-* tensão;
-* temperatura;
-* outras informações.
-
-Os detalhes concretos serão definidos em `ACT/`.
-
----
-
-# 16. Limites dos Atuadores
-
-Cada atuador deverá possuir limites operacionais definidos.
-
-Esses limites poderão incluir:
-
-* posição mínima;
-* posição máxima;
-* velocidade;
-* aceleração;
-* rotação;
-* potência;
-* corrente;
-* outros parâmetros relevantes.
-
-O ESP32-A deverá impedir que comandos normais ultrapassem os limites aplicáveis.
-
----
-
-# 17. Interface de Segurança
-
-O domínio de segurança possui interfaces próprias para atuar sobre os elementos necessários em condições de FailSafe/FailSecure.
-
-O ESP32-FS poderá enviar ao ESP32-A uma ordem de **inibição**.
-
-Essa ordem não constitui um comando normal de voo.
-
-```text id="5qg5za"
-ESP32-FS
-    │
-    │ Inibição
-    ▼
-ESP32-A
+```text
+Pitot A ─► SENSORIAL_01 (RP2040, nariz)
+Pitot B ─► SENSORIAL_04 (RP2040, cauda, fabricante distinto)
+Ambos ─R1─► Fusão/Navegação comparam, votam e publicam velocidade-ar + qualidade
 ```
 
-O ESP32-FS_A constitui uma via adicional de atuação de segurança e recebe comandos diretamente do ESP32-FS.
+## Exemplo 2 — Profundor com retorno
 
----
-
-# 18. Independência da Atuação de Segurança
-
-A arquitetura deverá evitar que a função de segurança dependa exclusivamente do caminho normal de comando.
-
-O domínio normal utiliza:
-
-```text id="xv5k6r"
-RaspberryPi → ESP32-A → Atuador
+```text
+Voo ─R1─► ACTUATOR_CAUDA (RP2350B): verifica limites, gera PWM,
+lê posição real, publica «ordenado vs. real + corrente + diagnóstico»
 ```
 
-Enquanto o domínio de segurança poderá utilizar:
+## Exemplo 3 — Implemento de pulverização
 
-```text id="2o5v3r"
-ESP32-FS → ESP32-A
-ESP32-FS → ESP32-FS_A
+```text
+Implemento ─► nó de integração: massa, caudal, carga restante ─R1─►
+Missão ajusta plano; Voo ajusta limites; FailSafe vigia centragem;
+o controlo da pulverização permanece no implemento.
 ```
 
-A implementação física concreta destas interfaces será definida de acordo com cada atuador.
+---
+
+# 5. Interfaces
+
+| Periférico | Ligação física | Grupo/PCB | Rede de saída |
+| --- | --- | --- | --- |
+| Sensores I2C/SPI/UART/ADC/PIO | Curta, junto ao nó | SENSORIAL / COMPUTE-SENSORIAL | R1 |
+| Atuadores PWM/GPIO/série + retorno | Curta, com andar de potência | ATUADOR / COMPUTE-ACTUATOR | R1 |
+| Sensores de reserva | Dedicada, independente | FAILSAFE / COMPUTE-NODE | R1 + via de emergência |
+| Câmara | FFC MIPI curto | GCV / COMPUTE-VISION-CARRIER | R3 → R1 (metadados) + R4 (vídeo) |
+| Rádios | RJ45-RS + energia + presença | COMUNICAÇÃO / COMM-RF | R4/R5 |
+| Implementos/auxiliares | Série dedicada + energia isolada | Nó de integração / COMPUTE-NODE | R1 (dados de voo) |
 
 ---
 
-# 19. Periféricos Externos
+# 6. Pontos em aberto
 
-O Aerus poderá integrar periféricos externos que não sejam diretamente necessários ao controlo básico da aeronave.
-
-Esses periféricos poderão incluir:
-
-* sistemas auxiliares;
-* equipamentos de missão;
-* sistemas de monitorização;
-* implementos;
-* outros equipamentos específicos da aeronave.
-
-A integração deverá manter a separação entre o sistema de voo e a função específica do periférico.
+| # | Ponto em aberto | Resolução |
+| --- | --- | --- |
+| 1 | Lista final de sensores por classe de aeronave, frequências e critérios RP2040 vs. Master RP2350B | SEN + HW-009 |
+| 2 | Lista final de atuadores, limites, PWM, retorno por atuador e versão COMPUTE-ACTUATOR | ACT + HW-008 |
+| 3 | Câmara definitiva, FFC, conetor MIPI, modos 720p60/720p30, codecs e formato de transporte | GCV + COMM-RF 5,8 GHz |
+| 4 | Sensores de reserva definitivos e diversidade de fabricantes | SEN + SEC + HW-008 |
+| 5 | Potências, antenas e fichas RJ45-RS das três COMM-RF | COMM-RF + HW-004/HW-006 |
+| 6 | Protocolo de implementos e dados mínimos obrigatórios para voo seguro | IMP |
 
 ---
 
-# 20. Implementos
-
-Os implementos constituem sistemas externos ao Aerus.
-
-Um implemento poderá possuir:
-
-* sensores próprios;
-* atuadores próprios;
-* controlador próprio;
-* sistema de comunicação;
-* sistema de alimentação;
-* lógica específica da missão.
-
-O Aerus deverá ser capaz de comunicar com o implemento e receber a informação necessária para o funcionamento seguro da aeronave.
-
----
-
-# 21. Informação Proveniente de Implementos
-
-Um implemento poderá disponibilizar ao Aerus informação relevante para o voo.
-
-Por exemplo, no caso de um sistema de pulverização, o Aerus poderá necessitar de conhecer parâmetros como:
-
-* massa;
-* caudal;
-* quantidade de carga restante;
-* estado do implemento;
-* outros parâmetros relevantes.
-
-Esta informação poderá ser utilizada pelo Aerus para cálculos relacionados com o comportamento da aeronave.
-
-O Aerus não necessita, contudo, de executar diretamente a função específica do implemento.
-
----
-
-# 22. Interfaces Configuráveis
-
-A arquitetura deverá permitir que a mesma plataforma Aerus utilize diferentes periféricos.
-
-A configuração da aeronave deverá determinar:
-
-* quais os sensores presentes;
-* quais os atuadores presentes;
-* quais as interfaces utilizadas;
-* quais os parâmetros de cada periférico;
-* quais os módulos necessários;
-* quais os periféricos opcionais.
-
-O código deverá ser parametrizado sempre que possível em vez de existir uma implementação completamente diferente para cada aeronave.
-
----
-
-# 23. Substituição de Periféricos
-
-A substituição de um periférico deverá ser possível quando o novo periférico cumprir a interface e os requisitos definidos.
-
-A substituição poderá exigir alteração da configuração da aeronave, mas não deverá obrigatoriamente exigir alteração estrutural do software.
-
----
-
-# 24. Inicialização
-
-Cada periférico deverá possuir uma sequência de inicialização adequada.
-
-Durante a inicialização deverão ser verificadas, quando aplicável:
-
-* presença;
-* comunicação;
-* alimentação;
-* estado inicial;
-* configuração;
-* validade dos dados;
-* capacidade de operação.
-
-Um periférico que não passe os testes necessários não deverá ser considerado operacional.
-
----
-
-# 25. Perda de Periférico
-
-A perda de um periférico deverá ser identificável quando a sua função exigir monitorização.
-
-A reação dependerá da importância do periférico.
-
-Poderá resultar em:
-
-* registo;
-* degradação funcional;
-* desativação de um módulo;
-* alteração de estado;
-* alteração de modo;
-* procedimento de segurança.
-
-A resposta concreta será definida nas especificações correspondentes.
-
----
-
-# 26. Periféricos Não Necessários
-
-Um periférico ou módulo associado poderá ser temporariamente desativado quando não for necessário para o estado ou modo atual da aeronave.
-
-A desativação poderá ter como objetivo:
-
-* reduzir consumo;
-* libertar processamento;
-* reduzir tráfego de comunicação;
-* reduzir interferências;
-* reduzir carga do sistema.
-
-A desativação deverá ser reversível quando o periférico voltar a ser necessário.
-
----
-
-# 27. Ativação Condicional
-
-A ativação de periféricos poderá depender do modo de funcionamento da aeronave.
-
-Exemplo conceptual:
-
-```text id="a0j6vb"
-                 Modo Aerus
-                     │
-          ┌──────────┼──────────┐
-          ▼          ▼          ▼
-       Periférico  Periférico  Periférico
-        ativo       inativo     ativo
-```
-
-O sistema deverá evitar consumir recursos de periféricos que não sejam necessários para a função atual.
-
----
-
-# 28. Identificação
-
-Cada periférico integrado deverá possuir uma identificação que permita ao sistema determinar, quando aplicável:
-
-* tipo;
-* identidade;
-* estado;
-* capacidades;
-* parâmetros;
-* interface;
-* configuração.
-
-A identificação concreta e os mecanismos utilizados serão definidos nas respetivas especificações.
-
----
-
-# 29. Configuração Física
-
-A configuração física deverá estabelecer explicitamente as ligações entre periféricos e elementos computacionais.
-
-Exemplo:
-
-```text id="j4j2r1"
-Sensor A ─────► ESP32-S_01
-Sensor B ─────► ESP32-S_01
-Sensor C ─────► ESP32-S_02
-
-Atuador A ────► ESP32-A_01
-Atuador B ────► ESP32-A_02
-```
-
-Esta configuração poderá variar entre aeronaves.
-
----
-
-# 30. Manutenção
-
-As interfaces deverão permitir inspeção, manutenção e substituição dos periféricos.
-
-Deverão ser considerados:
-
-* identificação;
-* acessibilidade;
-* conectores;
-* proteção contra ligação incorreta;
-* integridade das ligações;
-* facilidade de substituição.
-
-Os procedimentos de manutenção pertencem à documentação operacional e de manutenção aplicável.
-
----
-
-# 31. Limites do Documento
-
-Este documento não define:
-
-* sensores específicos;
-* atuadores específicos;
-* pinouts;
-* conectores concretos;
-* tensões;
-* correntes;
-* frequências concretas de cada sensor;
-* parâmetros concretos de cada atuador;
-* estrutura do protocolo TLV;
-* implementação dos drivers;
-* algoritmos de fusão de sensores;
-* regras completas de segurança.
-
-Esses elementos pertencem às respetivas especificações.
-
----
-
-# 32. Referências
-
-- HW-001 — Arquitetura_de_Hardware
-- HW-002 — Grupos_Computacionais
-- HW-003 — Distribuicao_de_Hardware
-- HW-004 — Interfaces_Eletricas
-- HW-005 — Alimentacao_e_Distribuicao_de_Energia
-- HW-006 — Interfaces_de_Comunicacao
-- HW-008 — Redundancia_e_Isolamento_de_Hardware
-- HW-009 — Expansibilidade_e_Configuracao_de_Hardware
-- SYS-006 — Gestao_de_Estados
-- SYS-007 — Modos_de_Funcionamento
-- SYS-008 — Gestao_Temporal
-- SEN — Especificações de Sensores
-- ACT — Especificações de Atuadores
-- SEC — Especificações de Segurança
-- COM — Especificações de Comunicações
-- IMP — Especificações de Implementos
+# 7. Referências
+
+* HW-001 — Arquitetura de Hardware
+* HW-002 — Grupos Computacionais
+* HW-003 — Distribuição de Hardware
+* HW-004 — Interfaces Elétricas
+* HW-005 — Alimentação e Distribuição de Energia
+* HW-006 — Interfaces de Comunicação
+* HW-008 — Redundância e Isolamento de Hardware
+* HW-009 — Expansibilidade e Configuração de Hardware
+* docs/Esquemas/Arquitetura-Computacional.md

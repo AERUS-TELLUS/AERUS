@@ -1,542 +1,281 @@
 # COM-002 — Protocolo TLV
 
-| Campo             | Valor                              |
-| ----------------- | ---------------------------------- |
-| **Código**        | COM-002                            |
-| **Título**        | Protocolo TLV                      |
-| **Versão**        | 1.0                                |
-| **Estado**        | Em Desenvolvimento                 |
-| **Autor**         | ShegaPT                            |
-| **Classificação** | Especificação de Comunicação       |
+| Campo | Valor |
+|---|---|
+| **Código** | COM-002 |
+| **Título** | Protocolo TLV |
+| **Versão** | 2.0 |
+| **Estado** | Aprovado para implementação |
+| **Autor** | ShegaPT |
+| **Classificação** | Especificação de Comunicação |
 
 ---
 
-# 1. Objetivo
+# 1. Objectivo
 
-O presente documento define a especificação do protocolo TLV (Type-Length-Value) utilizado pelo sistema Aerus para todas as mensagens trocadas entre Grupos Computacionais.
+O presente documento especifica o protocolo TLV (Type-Length-Value) **exclusivamente para as redes CAN** (CAN-Intra-Grupo, CAN-Principal e CAN-FailSafe). Define ainda, em anexos separados e normativos, o enquadramento do INTERCONNECT FABRIC (Anexo A) e o enquadramento da RJ45-Privada RS (Anexo B), para que jamais se confundam com TLV.
 
-O TLV constitui a camada de aplicação completa e autónoma de comunicação. O CAN FD é exclusivamente o canal de transporte — o TLV não depende nem conhece o meio utilizado.
+Regra estrutural: **TLV só existe em CAN.** O FABRIC usa quadros IPC próprios. A RJ45-Privada RS usa enquadramento série próprio. Qualquer transporte de TLV sobre RJ45 é apenas encapsulamento policiado pelo Router CAN↔RJ45 (COM-003), nunca TLV nativo no ar.
 
 ---
 
 # 2. Princípios
 
-* protocolo completo, seguro e autónomo;
-* estrutura fixa e determinística (sem alocações dinâmicas);
-* validação em tempo real (parser byte-a-byte);
-* CRC8 para integridade na camada de aplicação;
-* HMAC para autenticação (via módulo Security);
-* SEQ para anti-replay;
-* extensível (novos IDs sem alterar a estrutura);
-* little-endian para serialização numérica;
-* compatível com qualquer meio serial (CAN FD, UART, SPI, I2C).
+* Estrutura fixa e determinística: START (0xAA) + MSG_ID + COUNT + FIELDS + CRC8; sem alocações dinâmicas.
+* HMAC (32 B) e SEQ (4 B) acrescentados pelo módulo de segurança após serialização; não integram a estrutura base.
+* CRC8 SMBUS (polinómio 0x07) obrigatório em todas as mensagens CAN.
+* Little-endian para serialização numérica.
+* Até 32 campos por mensagem; até 64 B por quadro CAN-FD com fragmentação transparente.
+* **Proibição de vídeo pesado em TLV**: nenhum campo transporta fotogramas; o intervalo de campos de vídeo encontra-se revogado excepto para descritores de estado.
+* Parser FSM byte-a-byte com temporização, protecção contra transbordo e reinicialização automática.
 
 ---
 
-# 3. Formato da Mensagem
+# 3. Formato da mensagem TLV (só CAN)
 
-## 3.1 Estrutura Completa
-
-```text
-┌─────────┬─────────┬───────────┬─────────────────┬─────────┬──────────────┬─────────┐
-│ START   │ MSG ID  │ TLV COUNT │ TLV FIELDS      │ CRC8    │ HMAC (32B)   │ SEQ (4B)│
-│ (1 byte)│ (1 byte)│ (1 byte)  │ (variável)      │ (1 byte)│ (opcional)   │ (opç.)  │
-├─────────┼─────────┼───────────┼─────────────────┼─────────┼──────────────┼─────────┤
-│ 0xAA    │ 0x10-1F │ 0-32      │ ID(1)+LEN(1)+N  │ CRC-8   │ Segurança    │ Anti-   │
-│         │         │           │                 │ SMBUS   │ (módulo      │ replay  │
-│         │         │           │                 │ 0x07    │ Security)    │         │
-└─────────┴─────────┴───────────┴─────────────────┴─────────┴──────────────┴─────────┘
+```
+┌────────┬────────┬───────────┬──────────────┬───────┬────────────┬───────┐
+│ START  │ MSG_ID │ COUNT     │ FIELDS       │ CRC8  │ HMAC (32B) │ SEQ   │
+│ 1 B    │ 1 B    │ 1 B       │ variável     │ 1 B   │ opcional   │ 4Bopc │
+│ 0xAA   │0x10-1F │ 0-32      │ ID(1)+LEN(1) │ SMBUS │ segurança  │ anti- │
+│        │        │           │ +DATA(LEN)   │ 0x07  │            │repet. │
+└────────┴────────┴───────────┴──────────────┴───────┴────────────┴───────┘
 ```
 
-**NOTA:** O HMAC e o SEQ são geridos pelo módulo `Security/` e NÃO fazem parte da estrutura `TLVMessage`. São acrescentados após a serialização.
+| Campo | Tamanho | Descrição |
+|---|---|---|
+| START | 1 B | Sincronização, sempre 0xAA (padrão 10101010) |
+| MSG_ID | 1 B | Tipo de mensagem, 0x10–0x1F |
+| COUNT | 1 B | Número de campos TLV, 0–32 |
+| FIELDS | Variável | Cada campo: ID(1 B) + LEN(1 B) + DATA(LEN B) |
+| CRC8 | 1 B | CRC8 SMBUS calculado sobre START…último byte de FIELDS |
+| HMAC | 32 B | Opcional, gerido pelo módulo de segurança |
+| SEQ | 4 B | Opcional, anti-repetição, gerido pelo módulo de segurança |
 
-## 3.2 Campos
-
-| Campo      | Tamanho    | Descrição                                   |
-|------------|------------|---------------------------------------------|
-| START      | 1 byte     | Byte de sincronização (0xAA)                |
-| MSG ID     | 1 byte     | Tipo de mensagem (0x10-0x1F)                |
-| TLV COUNT  | 1 byte     | Número de campos TLV (0-32)                 |
-| TLV FIELDS | Variável   | Campos TLV: ID(1) + LEN(1) + DATA(N)        |
-| CRC8       | 1 byte     | CRC8 SMBUS (polinómio 0x07)                 |
-| HMAC       | 32 bytes   | Opcional, gerido pelo módulo Security       |
-| SEQ        | 4 bytes    | Opcional, anti-replay, gerido pelo Security |
-
-## 3.3 Tamanhos
-
-| Parâmetro                 | Valor                                  |
-|---------------------------|----------------------------------------|
-| Tamanho mínimo            | 4 bytes (START + MSGID + COUNT + CRC8) |
-| Tamanho máximo            | 1024 bytes (serializado, sem HMAC/SEQ) |
-| Máximo de TLVs            | 32 por mensagem                        |
-| Máximo de payload por TLV | 32 bytes (normal) ou 128 bytes (vídeo) |
+| Parâmetro | Valor |
+|---|---|
+| Tamanho mínimo | 4 B (START+MSG_ID+COUNT+CRC8) |
+| Tamanho máximo serializado | 1024 B (antes de fragmentação; fragmentado em quadros ≤64 B) |
+| Máximo de campos | 32 por mensagem |
+| Máximo por campo | 32 B (regra geral); proibidos campos de 128 B de vídeo |
 
 ---
 
-# 4. Formato TLV Individual
+# 4. Campo TLV individual
 
-Cada campo TLV é serializado de forma compacta:
-
-```text
-[ID (1 byte)] [LEN (1 byte)] [DATA (LEN bytes)]
+```
+[ID 1B] [LEN 1B] [DATA LEN bytes, little-endian]
 ```
 
-## 4.1 Exemplo
+Exemplo numérico — rolamento 1,0f (0x3F800000 em little-endian `00 00 80 3F`):
 
-Um campo de rotação (float = 1.0f):
-
-```text
+```
 0x30 0x04 0x00 0x00 0x80 0x3F
-│    │    └─────┴─────┴─────┘
-│    │           │
-│    LEN=4       DATA=1.0f (little-endian: 0x3F800000)
-│
-ID=0x30 (FLD_ROLL)
+│    │    └── DATA = 1.0f ──┘
+│    LEN = 4
+ID = 0x30 (FLD_ROLL)
 ```
 
-## 4.2 Regras
-
-* ID é sempre 1 byte (uint8_t);
-* LEN é sempre 1 byte (uint8_t), representando o número de bytes de DATA;
-* DATA é Little-endian para dados numéricos;
-* LEN=0 indica campo sem payload (apenas ID).
+Regras: ID sempre 1 B; LEN sempre 1 B; LEN=0 admite campo sem carga; dados numéricos sempre little-endian.
 
 ---
 
 # 5. CRC8
 
-## 5.1 Algoritmo
-
-O CRC8 utilizado é o CRC8 SMBUS com polinómio 0x07.
-
-```text
-Polinómio: x⁸ + x⁷ + x⁶ + x⁴ + x² + 1 (0x07)
-Seed: 0x00
-Refin: false
-Refout: false
-XorOut: 0x00
-```
-
-## 5.2 Cálculo
-
-O CRC8 é calculado sobre todos os bytes da mensagem desde START até ao último byte TLV:
-
-```text
-CRC8 = CRC8(START + MSG_ID + TLV_COUNT + TLV_FIELDS)
-```
-
-## 5.3 Tabela de Lookup
-
-A implementação deve utilizar uma tabela de lookup para eficiência:
+Algoritmo CRC8 SMBUS: polinómio 0x07 (`x⁸+x²+x+1` na representação SMBUS), semente 0x00, sem reflexão, XOR de saída 0x00. Calculado sobre todos os bytes desde START até ao último byte de FIELDS.
 
 ```cpp
 static const uint8_t CRC8_TABLE[256] = {
     0x00, 0x07, 0x0E, 0x09, 0x1C, 0x1B, 0x12, 0x15,
     0x38, 0x3F, 0x36, 0x31, 0x24, 0x23, 0x2A, 0x2D,
-    // ... tabela completa (256 entradas)
+    // ... tabela completa de 256 entradas
 };
-```
-
-## 5.4 Validação
-
-O receptor calcula o CRC8 sobre os bytes recebidos e compara com o CRC8 recebido. Se forem diferentes, a mensagem é descartada.
-
----
-
-# 6. HMAC (Opcional)
-
-## 6.1 Descrição
-
-O HMAC (Hash-based Message Authentication Code) de 32 bytes é gerido pelo módulo `Security/` após a serialização da mensagem TLV.
-
-## 6.2 Função
-
-* autenticação do remetente (apenas módulos autorizados podem gerar HMAC válido);
-* integridade adicional (qualquer alteração invalida o HMAC);
-* proteção contra injeção de mensagens falsificadas.
-
-## 6.3 Implementação
-
-* o HMAC é calculado sobre a mensagem TLV serializada (START até CRC8);
-* a chave é partilhada entre os módulos autorizados;
-* o algoritmo é definido pelo módulo Security (ex: HMAC-SHA256 truncado para 32 bytes);
-* o HMAC é opcional — a sua presença é indicada por flag externa ao TLV.
-
-## 6.4 Nota
-
-O HMAC NÃO faz parte da estrutura `TLVMessage`. É acrescentado após a serialização e removido antes da desserialização.
-
----
-
-# 7. SEQ (Anti-Replay)
-
-## 7.1 Descrição
-
-O SEQ (Sequence Number) de 4 bytes é gerido pelo módulo `Security/` para prevenir ataques de replay.
-
-## 7.2 Função
-
-* cada mensagem possui um SEQ único e crescente;
-* o接收or verifica se o SEQ é superior ao último SEQ válido;
-* mensagens com SEQ inferior ou igual são descartadas (possível replay);
-* o SEQ é reiniciado a cada sessão ou reinicialização.
-
-## 7.3 Implementação
-
-* o SEQ é calculado como um contador 32-bit crescente;
-* cada módulo mantém o último SEQ válido por remetente;
-* mensagens com SEQ fora da janela aceitável são descartadas;
-* o SEQ é opcional — a sua presença é indicada por flag externa ao TLV.
-
----
-
-# 8. IDs de Mensagem (MsgID)
-
-```text
-ID      Constante           Descrição
-─────────────────────────────────────────────────────────────
-0x10    MSG_HEARTBEAT       Heartbeat periódico (todos os grupos)
-0x11    MSG_TELEMETRY       Dados de telemetria (sensores, voo, estado)
-0x12    MSG_COMMAND         Comandos (RaspberryPi → periféricos)
-0x13    MSG_ACK             Confirmação de receção
-0x14    MSG_FAILSAFE        Ativação/desativação FailSafe/FailSecure
-0x15    MSG_DEBUG           Debug (prioridade dinâmica)
-0x16    MSG_VIDEO           Dados de vídeo (streaming)
-0x17    MSG_SHELL_CMD       Comando shell remoto (diagnóstico)
-0x18    MSG_SI_DATA         Dados em unidades SI
-0x19    MSG_STATE_BROADCAST Broadcast de estado do grupo
-0x1A    MSG_ACTUATOR_FB     Feedback de atuadores
-0x1B    MSG_SAFETY_DATA     Dados de segurança (ESP32-FS only)
-0x1C    MSG_SYNC_REQ        Pedido de sincronização temporal
-0x1D    MSG_SYNC_RESP       Resposta de sincronização
-0x1E    MSG_CONFIG          Dados de configuração/parametrização
-0x1F    MSG_RESERVED        Reservado para expansão futura
-```
-
-## 8.1 Validação
-
-```cpp
-constexpr bool isValidMsgID(uint8_t id) {
-    return (id >= 0x10) && (id <= 0x1F);
+uint8_t crc8_smbus(const uint8_t* d, size_t n) {
+    uint8_t c = 0x00;
+    for (size_t i = 0; i < n; ++i) c = CRC8_TABLE[c ^ d[i]];
+    return c;
 }
 ```
 
+O receptor calcula o CRC8 e compara com o recebido; divergência implica descarte (na CAN-FailSafe, descarte com registo e reenvio supervisionado, jamais silêncio — ver COM-003 e COM-006).
+
 ---
 
-# 9. IDs de Campos TLV
+# 6. HMAC e SEQ (camada de segurança)
 
-A tabela completa de IDs de campos TLV encontra-se em `shared/TLV_DEFINITIONS` §10.
+* HMAC: 32 B, calculado sobre a mensagem TLV serializada (START…CRC8); chave partilhada gerida pelo módulo de segurança; obrigatório para mensagens CRITICAL e superiores.
+* SEQ: contador crescente de 32 bits por emissor; o receptor rejeita SEQ repetido ou fora da janela (tamanho 1000, configurável); previne repetição de mensagens capturadas.
+* Ambos são externos à estrutura `TLVMessage`; acrescentados após serialização e removidos antes da desserialização.
 
-## 9.1 Resumo dos Intervalos
+---
 
-| Intervalo | Domínio         |
-|-----------|-----------------|
-| 0x20-0x2F | GPS / Navegação |
-| 0x30-0x3F | IMU / Atitude   |
-| 0x40-0x4F | Estado de Voo   |
-| 0x50-0x5F | Energia         |
-| 0x60-0x6F | Temperatura     |
-| 0x70-0x7F | Sistema         |
-| 0x80-0x8F | Atuadores       |
-| 0x90-0x9F | Sensores        |
-| 0xA1-0xAF | Failsafe        |
-| 0xB0-0xBF | Vídeo           |
+# 7. MSG_ID (0x10–0x1F)
 
-## 9.2 Validação
+| ID | Constante | Prioridade típica | Descrição |
+|---|---|---|---|
+| 0x10 | MSG_HEARTBEAT | HIGH | Batimento periódico |
+| 0x11 | MSG_TELEMETRY | HIGH | Telemetria de sensores/voo/estado |
+| 0x12 | MSG_COMMAND | CRITICAL | Comandos validados (nunca MISSÃO→ATUADOR directo) |
+| 0x13 | MSG_ACK | CRITICAL | Confirmação de recepção |
+| 0x14 | MSG_FAILSAFE | SUPER_CRITICAL | Activação/desactivação de emergência (só CAN-FailSafe e CAN-Principal para difusão de estado) |
+| 0x15 | MSG_DEBUG | SUPER_LOW (dinâmica, ver COM-004) | Depuração |
+| 0x16 | MSG_VIDEO_DESC | MEDIUM | **Descritor** de vídeo (estado do stream, modo 720p30); jamais fotogramas |
+| 0x17 | MSG_SHELL_CMD | LOW | Comando de diagnóstico |
+| 0x18 | MSG_SI_DATA | HIGH | Dados em unidades SI |
+| 0x19 | MSG_STATE_BROADCAST | HIGH | Difusão de estado do grupo |
+| 0x1A | MSG_ACTUATOR_FB | HIGH | Retorno de actuadores |
+| 0x1B | MSG_SAFETY_DATA | SUPER_CRITICAL | Dados de segurança (G-FS) |
+| 0x1C | MSG_SYNC_REQ | HIGH | Pedido de sincronização |
+| 0x1D | MSG_SYNC_RESP | HIGH | Resposta de sincronização |
+| 0x1E | MSG_CONFIG | MEDIUM | Configuração/parametrização |
+| 0x1F | MSG_RESERVED | — | Reservado |
+
+Validação: `isValidMsgID(id) = (id >= 0x10 && id <= 0x1F)`.
+
+Nota de migração: o antigo `MSG_VIDEO` com carga de 128 B encontra-se **revogado**. Foi substituído por `MSG_VIDEO_DESC` (descritores curtos, ≤16 B). O vídeo 720p30 circula exclusivamente no segmento GCV↔TX 5,8 GHz (Anexo B).
+
+---
+
+# 8. Campos TLV (intervalos)
+
+| Intervalo | Domínio |
+|---|---|
+| 0x20–0x2F | GPS / Navegação |
+| 0x30–0x3F | IMU / Atitude |
+| 0x40–0x4F | Estado de voo |
+| 0x50–0x5F | Energia |
+| 0x60–0x6F | Temperatura |
+| 0x70–0x7F | Sistema |
+| 0x80–0x8F | Actuadores |
+| 0x90–0x9F | Sensores |
+| 0xA1–0xAF | FailSafe / supervisão |
+| 0xB0–0xBF | **Descritores** de vídeo/estado (proibida carga de fotograma) |
+
+Comandos: 0xC0–0xCF básicos; 0xD0–0xDF controlo; 0xE0–0xEF avançados; 0xF0–0xFF navegação.
+
+---
+
+# 9. Conversão de dados e estruturas
+
+Little-endian obrigatório. Funções: `floatToBytes/bytesToFloat`, `int32ToBytes/bytesToInt32`, `uint32ToBytes/bytesToUint32`, `uint16ToBytes/bytesToUint16`.
 
 ```cpp
-constexpr bool isValidFieldID(uint8_t id) {
-    return (id >= 0x20 && id <= 0x7F) ||
-           (id >= 0xA1 && id <= 0xFF);
-}
+struct TLVField   { uint8_t id, len, data[32]; };
+struct TLVMessage { uint8_t start /*0xAA*/, msgID, tlvCount; TLVField tlvs[32]; uint8_t crc8; };
 ```
 
----
-
-# 10. IDs de Comando
-
-A tabela completa de IDs de comando encontra-se em `shared/TLV_DEFINITIONS` §11.
-
-## 10.1 Resumo dos Intervalos
-
-| Intervalo | Tipo                  |
-|-----------|-----------------------|
-| 0xC0-0xCF | Comandos Básicos      |
-| 0xD0-0xDF | Comandos de Controlo  |
-| 0xE0-0xEF | Comandos Avançados    |
-| 0xF0-0xFF | Comandos de Navegação |
+Sem `TLVVideoField` de 128 B: revogado.
 
 ---
 
-# 11. Conversão de Dados
+# 10. Parser FSM
 
-## 11.1 Little-Endian
-
-Todos os dados numéricos são serializados em **little-endian** (byte menos significativo primeiro).
-
-| Tipo      | Tamanho | Exemplo (1.0f)      |
-|-----------|---------|---------------------|
-| float     | 4 bytes | 0x00 0x00 0x80 0x3F |
-| int32_t   | 4 bytes | Conforme valor      |
-| uint32_t  | 4 bytes | Conforme valor      |
-| uint16_t  | 2 bytes | Conforme valor      |
-| uint8_t   | 1 byte  | Conforme valor      |
-
-## 11.2 Funções de Conversão
-
-| Função                                | Descrição             |
-| --------------------------------------|-----------------------|
-| `floatToBytes()` / `bytesToFloat()`   | Conversão de float    |
-| `int32ToBytes()` / `bytesToInt32()`   | Conversão de int32_t  |
-| `uint32ToBytes()` / `bytesToUint32()` | Conversão de uint32_t |
-| `uint16ToBytes()` / `bytesToUint16()` | Conversão de uint16_t |
+Estados: WAIT_START → WAIT_MSGID → WAIT_COUNT → WAIT_TLV_ID → WAIT_TLV_LEN → WAIT_TLV_DATA → WAIT_CHECKSUM. Erros: OVERFLOW, TIMEOUT (intervalo entre bytes), INVALID_START/MSGID, CHECKSUM, TLV_COUNT (>32), TLV_LEN (>32). Qualquer erro reinicia o parser; protecção contra transbordo por limite de 1024 B; temporização com relógio monotónico.
 
 ---
 
-# 12. Estruturas de Dados
-
-## 12.1 TLVField
-
-| Campo  | Tipo        | Tamanho      | Descrição              |
-| ------ | ----------- | ------------ | ---------------------- |
-| `id`   | uint8_t     | 1 byte       | Identificador do campo |
-| `len`  | uint8_t     | 1 byte       | Comprimento do payload |
-| `data` | uint8_t[32] | 32 bytes max | Payload do campo       |
-
-## 12.2 TLVVideoField
-
-| Campo  | Tipo         | Tamanho       | Descrição              |
-| ------ | ------------ | ------------- | ---------------------- |
-| `id`   | uint8_t      | 1 byte        | Identificador do campo |
-| `len`  | uint8_t      | 1 byte        | Comprimento do payload |
-| `data` | uint8_t[128] | 128 bytes max | Payload de vídeo       |
-
-## 12.3 TLVMessage
-
-| Campo      | Tipo         | Tamanho       | Descrição                         |
-| ---------- | ------------ | ------------- | --------------------------------- |
-| `start`    | uint8_t      | 1 byte        | Byte de sincronização (0xAA)      |
-| `msgID`    | uint8_t      | 1 byte        | Identificador do tipo de mensagem |
-| `tlvCount` | uint8_t      | 1 byte        | Número de campos TLV              |
-| `tlvs`     | TLVField[32] | Até 32 campos | Campos TLV                        |
-| `crc8`     | uint8_t      | 1 byte        | CRC8 SMBUS                        |
-
----
-
-# 13. Parser FSM
-
-## 13.1 Estados
-
-| Estado                 | Descrição                      |
-|------------------------|--------------------------------|
-| PARSER_WAIT_START      | Aguarda START_BYTE (0xAA)      |
-| PARSER_WAIT_MSGID      | Aguarda e valida msgID         |
-| PARSER_WAIT_TLVCOUNT   | Aguarda número de TLVs         |
-| PARSER_WAIT_TLV_ID     | Aguarda ID do TLV atual        |
-| PARSER_WAIT_TLV_LEN    | Aguarda comprimento do payload |
-| PARSER_WAIT_TLV_DATA   | Acumula bytes do payload       |
-| PARSER_WAIT_CHECKSUM   | Aguarda CRC8 e valida          |
-
-## 13.2 Fluxo
-
-```text
-WAIT_START ──(0xAA)──→ WAIT_MSGID ──(msgID válido)──→ WAIT_TLVCOUNT
-                                               |           │
-                                        (tlvCount==0)  (tlvCount>0)
-                                               ↓           ↓
-                                         WAIT_CHECKSUM   WAIT_TLV_ID
-                                               ↑              │
-                                               │              ↓
-                                         (após CRC)    WAIT_TLV_LEN
-                                               ↑              │
-                                               │              ↓
-                                         (último TLV)   WAIT_TLV_DATA
-                                               ↑              │
-                                               └──────────────┘
-```
-
-## 13.3 Códigos de Erro
-
-| Erro                      | Descrição                       |
-|---------------------------|---------------------------------|
-| PARSER_OK                 | Sem erro                        |
-| PARSER_ERR_OVERFLOW       | Buffer interno excedido         |
-| PARSER_ERR_TIMEOUT        | Gap entre bytes excedeu timeout |
-| PARSER_ERR_INVALID_START  | START_BYTE ou msgID inválido    |
-| PARSER_ERR_CHECKSUM       | CRC8 inválido                   |
-| PARSER_ERR_TLV_COUNT      | tlvCount > MAX_TLV_FIELDS       |
-| PARSER_ERR_TLV_LEN        | LEN > MAX_TLV_VIDEO_DATA        |
-
-## 13.4 Características de Segurança
-
-* **Timeout automático** — gap entre bytes excede maxFrameGapMicros → parser reinicia;
-* **Proteção contra overflow** — rawOffset < MAX_MESSAGE_SIZE;
-* **Validação em tempo real** — cada byte é validado à medida que chega;
-* **Reset automático em erro** — qualquer erro reinicia o parser;
-* **Fallback** — millis()*1000 quando esp_timer_get_time() não disponível.
-
----
-
-# 14. TLVBuilder
-
-## 14.1 Interface Fluente
-
-O TLVBuilder facilita a construção de mensagens:
+# 11. Construtor (exemplo)
 
 ```cpp
-TLVBuilder builder;
-builder.addFloat(FLD_ROLL, 0.12f);
-builder.addFloat(FLD_PITCH, -0.05f);
-builder.addInt32(FLD_GPS_LAT, 412345678);
-builder.addUint8(FLD_STATE, SYS_STATE_FLYING);
-builder.addUint8(FLD_MODE, MODE_STABILIZE);
-
-uint8_t buffer[MAX_MESSAGE_SIZE];
-size_t len = builder.build(MSG_TELEMETRY, buffer, sizeof(buffer));
-```
-
-## 14.2 Métodos Disponíveis
-
-| Método             | Tipo      | Descrição                     |
-|--------------------|-----------|-------------------------------|
-| `addFloat()`       | float     | Campo de 4 bytes              |
-| `addInt32()`       | int32_t   | Campo de 4 bytes              |
-| `addUint32()`      | uint32_t  | Campo de 4 bytes              |
-| `addUint16()`      | uint16_t  | Campo de 2 bytes              |
-| `addUint8()`       | uint8_t   | Campo de 1 byte               |
-| `addBytes()`       | uint8_t[] | Campo de N bytes              |
-| `build()`          | —         | Serializa a mensagem completa |
-
----
-
-# 15. Validação em Tempo de Compilação
-
-| Função                  | Descrição                                              |
-| ----------------------- | ------------------------------------------------------ |
-| `isValidMsgID(id)`      | Verifica se o ID está no intervalo 0x10-0x1F           |
-| `isValidFieldID(id)`    | Verifica se está nos intervalos reservados (0x20-0xFF) |
-
----
-
-# 16. Constantes
-
-| Constante             | Valor   | Descrição                                   |
-| ----------------------|---------|---------------------------------------------|
-| `START_BYTE`          | 0xAA    | Byte de sincronização (padrão 10101010)     |
-| `PROTOCOL_VERSION_STR`| "3.0.0" | Versão do protocolo (Aerus)                 |
-| `MAX_TLV_FIELDS`      | 32      | Número máximo de campos por mensagem        |
-| `MAX_TLV_DATA`        | 32      | Tamanho máximo de payload normal (bytes)    |
-| `MAX_TLV_VIDEO_DATA`  | 128     | Tamanho máximo de payload de vídeo (bytes)  |
-| `MAX_MESSAGE_SIZE`    | 1024    | Tamanho máximo de uma mensagem serializada  |
-| `MIN_MESSAGE_SIZE`    | 4       | Tamanho mínimo (START + MSGID + COUNT + CRC)|
-| `CRC8_POLYNOMIAL`     | 0x07    | Polinómio CRC8 SMBUS                        |
-
----
-
-# 17. Segurança e Robustez
-
-| Mecanismo                 | Descrição                                                  |
-|---------------------------|------------------------------------------------------------|
-| START_BYTE = 0xAA         | Padrão binário 10101010, facilmente distinguível de ruído  |
-| CRC8 SMBUS (0x07)         | Deteta erros de 1-2 bits, rajadas ≤8 bits                  |
-| HMAC (32 bytes)           | Autenticação do remetente via módulo Security              |
-| SEQ (4 bytes)             | Anti-replay, previne reenvio de mensagens capturadas       |
-| CAN CRC nativo (17-bit)   | Proteção física contra erros de transmissão                |
-| CAN ID + assinatura       | Identificação e autenticação no nível de transporte        |
-| Intervalos de IDs seguros | 0x20-0x7F e 0xA1-0xFF evitam colisão com ASCII de controlo |
-| Limites máximos           | Previnem buffer overflow e alocações dinâmicas             |
-| Parser com timeout        | Recupera automaticamente de streams corrompidos            |
-| Reset automático em erro  | Qualquer erro reinicia o parser para a próxima mensagem    |
-| Sem alocações dinâmicas   | Toda a memória é estática – comportamento determinístico   |
-
----
-
-# 18. Exemplo: Construir e Enviar
-
-```cpp
-// Construir mensagem de telemetria
-TLVBuilder builder;
-builder.addFloat(FLD_ROLL, 0.12f);
-builder.addFloat(FLD_PITCH, -0x05f);
-builder.addFloat(FLD_YAW, 1.57f);
-builder.addInt32(FLD_GPS_LAT, 412345678);
-builder.addInt32(FLD_GPS_LON, -82345678);
-builder.addUint8(FLD_STATE, SYS_STATE_FLYING);
-builder.addUint8(FLD_MODE, MODE_STABILIZE);
-
-uint8_t buffer[MAX_MESSAGE_SIZE];
-size_t len = builder.build(MSG_TELEMETRY, buffer, sizeof(buffer));
-
-// Enviar via CAN FD
-can_send(CAN_ID_TELEMETRY, buffer, len);
+TLVBuilder b;
+b.addFloat(FLD_ROLL, 0.12f);
+b.addFloat(FLD_PITCH, -0.05f);
+b.addInt32(FLD_GPS_LAT, 412345678);
+b.addUint8(FLD_STATE, SYS_STATE_FLYING);
+uint8_t buf[1024]; size_t n = b.build(MSG_TELEMETRY, buf, sizeof buf);
+can_send(can_id_telemetria, buf, n); // fragmentado se >64 B
 ```
 
 ---
 
-# 19. Exemplo: Receber e Processar
+# 12. Fragmentação CAN-FD
 
-```cpp
-Parser parser;
+Quadro CAN-FD: 64 B − sobrecarga ≈ 8–12 B ⇒ ≈ 52–56 B úteis; mensagem mínima 4 B ⇒ ≈ 48 B para campos por quadro. O primeiro fragmento contém o cabeçalho TLV completo; os seguintes apenas campos; o receptor reconstitui antes de validar; fragmento perdido implica mensagem perdida (com registo e, se CRITICAL+, reenvio supervisionado).
 
-void onCANFrame(const uint8_t* data, size_t len) {
-    for (size_t i = 0; i < len; i++) {
-        if (parser.feed(data[i])) {
-            TLVMessage* msg = parser.getMessage();
-
-            if (msg->msgID == MSG_COMMAND) {
-                for (uint8_t i = 0; i < msg->tlvCount; i++) {
-                    switch (msg->tlvs[i].id) {
-                        case CMD_SET_ROLL:
-                            float roll = bytesToFloat(msg->tlvs[i].data);
-                            break;
-                        case CMD_SET_HEADING:
-                            float heading = bytesToFloat(msg->tlvs[i].data);
-                            break;
-                    }
-                }
-            }
-
-            parser.acknowledge();
-        }
-    }
-}
+```
+TLV: [START|MSG|COUNT|F1|F2|F3|F4|CRC8]
+       ── quadro 1 (≤64B) ── ── quadro 2 ──
+       [Frag0/1 + cabeçalho+F1+F2] [Frag1/1 + F3+F4+CRC8]
 ```
 
 ---
 
-# 20. Fragmentação CAN FD
+# 13. Constantes
 
-Quando uma mensagem TLV excede o payload máximo de um frame CAN FD (64 bytes), deverá ser fragmentada.
-
-## 20.1 Espaço Disponível
-
-```text
-Espaço CAN FD = 64 bytes
-Overhead CAN FD ≈ 8-12 bytes
-Espaço TLV ≈ 52-56 bytes
-
-Mensagem mínima = START(1) + MSGID(1) + COUNT(1) + CRC8(1) = 4 bytes
-Espaço para FIELDS ≈ 48 bytes mínimo por frame
-```
-
-## 20.2 Regras
-
-* o primeiro fragmento contém o cabeçalho TLV completo;
-* os fragmentos seguintes contêm apenas campos TLV;
-* o接收or reconstrói a mensagem antes de processar;
-* fragmento perdido → mensagem inteira descartada;
-* timeout entre fragmentos = timeout normal.
+| Constante | Valor |
+|---|---|
+| START_BYTE | 0xAA |
+| MAX_TLV_FIELDS | 32 |
+| MAX_TLV_DATA | 32 |
+| MAX_MESSAGE_SIZE | 1024 |
+| MIN_MESSAGE_SIZE | 4 |
+| CRC8_POLYNOMIAL | 0x07 |
 
 ---
 
-# 21. Referências
+# Anexo A (normativo) — Enquadramento INTERCONNECT FABRIC (não é TLV)
 
-- SHARED-TLV — Definições do Protocolo TLV
-- SHARED-CAN-IDS — Alocação de CAN IDs
-- COM-001 — Arquitetura de Comunicação
-- COM-003 — Gestor de Mensagens
-- COM-004 — Prioridades e Filas
-- COM-008 — CAN Bus
-- COM-010 — Integridade
-- SYS-003 — Arquitetura de Software
-- SEC — Especificações de Segurança
+O FABRIC intra-cluster do Master Geral utiliza quadros IPC próprios, determinísticos e de baixa latência. A tecnologia física (SPI/DMA/PIO/memória partilhada) é definida no projecto detalhado; o formato lógico é invariante.
+
+```
+┌────────┬─────────┬────────┬──────────┬────────┬───────────┬─────────────┬─────────┬─────┐
+│ SOURCE │ DESTINO │ NÚCLEO │ TIPO     │ REQ_ID │ TIMESTAMP │ COMPRIMENTO │ PAYLOAD │ CRC │
+│ 1 B    │ 1 B     │ 1 B    │ 1 B      │ 2 B    │ 4 B       │ 2 B         │ var.    │ 2 B │
+└────────┴─────────┴────────┴──────────┴────────┴───────────┴─────────────┴─────────┴─────┘
+```
+
+| Campo | Descrição |
+|---|---|
+| SOURCE / DESTINO | Núcleo lógico de origem/destino (0–7) ou função (fusão, matemática, navegação, missão, supervisão) |
+| NÚCLEO | Núcleo físico executor (0–7 nos 4×RP2350) |
+| TIPO | SENSOR_DATA, MATH_REQUEST, RESPONSE, NAVIGATION_REQ/RESP, MISSION_REQ/RESP, HEALTH_STATUS, SYSTEM_STATUS, TIME_SYNC, FAULT, HEARTBEAT |
+| REQ_ID | Correlaciona pedido RPC e resposta |
+| TIMESTAMP | Relógio monotónico do cluster (para RPC e TIME_SYNC) |
+| COMPRIMENTO | Tamanho do PAYLOAD |
+| PAYLOAD | Dados binários little-endian (nunca TLV) |
+| CRC | CRC-16 do cabeçalho+PAYLOAD |
+
+Exemplo numérico: `MATH_REQUEST` do núcleo 2 ao núcleo 5, REQ_ID 0x0417, PAYLOAD 48 B (matriz de covariância 3×4 floats): quadro = 1+1+1+1+2+4+2+48+2 = 62 B; resposta `RESPONSE` com mesmo REQ_ID em <200 µs (objectivo de projecto; valor a confirmar em bancada).
+
+RPC entre núcleos: chamada bloqueante com tempo-limite (COM-006) ou não-bloqueante com retorno posterior; sem alocação dinâmica; filas por núcleo (COM-004).
+
+---
+
+# Anexo B (normativo) — Enquadramento RJ45-Privada RS (não é TLV nativo)
+
+A RJ45-Privada RS é uma ligação série ponto-a-ponto (protocolo eléctrico tipo RS-422/485, **a confirmar no esquemático**). O conector RJ45 é apenas suporte mecânico de rede privada; proibida ligação a Ethernet.
+
+## B.1 Segmento GCV ←→ placa TX 5,8 GHz (vídeo 720p30)
+
+Transporta o fluxo de vídeo 720p30 (1280×720, 30 qps, H.264 ≈ 4–8 Mbit/s) segundo o protocolo da placa TX. Nenhum byte deste fluxo é TLV. A CAN transporta apenas `MSG_VIDEO_DESC` (ex.: `stream_activo=1, modo=720p30, débito=6,2 Mbit/s`).
+
+```
+[G-VIS / GCV] ──RJ45-RS (série conf.)── [placa TX 5,8 GHz] ──ar── [RX solo] ── 720p30
+```
+
+## B.2 Segmento MG ←→ RX 2,4 GHz + TX 868 MHz (comando/telemetria)
+
+Transporta comando ascendente (2,4 GHz, 50 Hz) e telemetria descendente (868 MHz, 10 Hz + eventos). Enquadramento série com soma de verificação e SEQ de enlace. Pode **encapsular** TLV validado pelo Router CAN↔RJ45, com tradução de endereços e policiamento (COM-003, COM-007).
+
+```
+[MG] ──RJ45-RS── [RX 2,4 GHz (cmd)]   [TX 868 MHz (telem.)] ──ar── [solo]
+Exemplo: comando 20 ms (50 Hz), 24 B por trama ⇒ ≈ 9,6 kbit/s úteis; folga ampla a 115 200 bit/s.
+```
+
+É proibido injectar vídeo neste segmento e proibido injectar comando/telemetria no segmento de vídeo.
+
+---
+
+# 14. Nota histórica de migração
+
+> Raspberry Pi, ESP32 (todas as variantes) e FS_A não são entidades deste protocolo e não possuem MSG_ID, campos TLV nem endereços próprios. Referências anteriores a esses nomes devem ler-se como designações provisórias dos actuais Grupos Computacionais (§COM-001 §3).
+
+---
+
+# 15. Referências
+
+* COM-001 — Arquitetura de Comunicação
+* COM-003 — Gestor de Mensagens
+* COM-004 — Prioridades e Filas
+* COM-008 — CAN Bus
+* COM-010 — Integridade

@@ -1,10 +1,10 @@
-# SYS-008 — Gestao_Temporal
+# SYS-008 — Gestão Temporal
 
 | Campo             | Valor                    |
-| ----------------- | ------------------------ |
+|-------------------|--------------------------|
 | **Código**        | SYS-008                  |
 | **Título**        | Gestão Temporal          |
-| **Versão**        | 1.0                      |
+| **Versão**        | 2.0                      |
 | **Estado**        | Em Desenvolvimento       |
 | **Autor**         | ShegaPT                  |
 | **Classificação** | Especificação de Sistema |
@@ -13,350 +13,134 @@
 
 # 1. Objetivo
 
-O presente documento define os princípios e a arquitetura temporal global do sistema Aerus.
+O presente documento define os princípios e a arquitetura temporal global do sistema AERUS. Estabelecem-se os mecanismos gerais de sincronização, referência temporal, contagem de tempo, aquisição e comunicação periódicas e coordenação temporal entre grupos, Master Geral e GCV.
 
-São estabelecidos os mecanismos gerais de sincronização temporal, referência temporal, contagem de tempo, aquisição periódica, comunicação periódica e coordenação temporal entre os diferentes grupos computacionais.
-
-As políticas temporais específicas dos módulos de software, incluindo prioridades, *deadlines*, *timeouts*, recuperação e tratamento de atrasos, são definidas nas especificações da área SW.
+As políticas temporais específicas por módulo (prioridades, deadlines, timeouts, recuperação, atrasos) constam da série SW e da política temporal dedicada; o presente documento fixa o modelo global.
 
 ---
 
-# 2. Princípios Gerais
+# 2. Âmbito
 
-A arquitetura temporal do Aerus baseia-se nos seguintes princípios:
-
-* sincronização distribuída;
-* referência temporal comum;
-* utilização de múltiplas referências temporais;
-* periodicidade configurável;
-* independência temporal dos periféricos;
-* separação entre aquisição e comunicação;
-* estabilidade temporal;
-* deteção de atrasos;
-* tolerância controlada a variações temporais;
-* prioridade da segurança.
-
-O sistema deverá manter uma referência temporal suficientemente consistente entre os diferentes grupos computacionais para permitir a correlação dos dados, execução dos cálculos e análise posterior dos acontecimentos.
+Aplica-se a todas as referências temporais, à sincronização entre CAN-Intra, CAN-Principal, CAN-FailSafe, FABRIC e RJ45-RS, às cadências de periféricos e módulos e à apresentação temporal na estação terrestre.
 
 ---
 
-# 3. Referência Temporal
+# 3. Descrição Detalhada
 
-O Aerus utiliza uma arquitetura temporal sincronizada entre os diferentes grupos computacionais.
+## 3.1. Princípios gerais
 
-O Grupo Computacional RaspberryPi e o Grupo Computacional ESP32-FS estabelecem inicialmente uma referência temporal comum.
+- Sincronização distribuída com referência comum.
+- Utilização de múltiplas referências, cada qual com finalidade definida.
+- Periodicidade configurável por periférico, por rede e por módulo.
+- Independência temporal dos periféricos face à comunicação entre grupos.
+- Separação entre aquisição e comunicação.
+- Estabilidade temporal com tolerância controlada a variações.
+- Deteção de atrasos como indicador de falha.
+- Prioridade da segurança em qualquer conflito temporal.
 
-Após esta sincronização inicial:
+O sistema mantém referência suficientemente consistente para correlação de dados, execução de cálculos e análise posterior.
 
-1. ESP32-S sincroniza com a referência estabelecida por RaspberryPi e ESP32-FS;
-2. ESP32-A sincroniza com a referência estabelecida por RaspberryPi e ESP32-FS;
-3. ESP32-FS_A sincroniza com ESP32-FS.
+## 3.2. Referência temporal e sincronização inicial
 
-Desta forma, os diferentes grupos computacionais mantêm uma referência temporal coerente, permitindo a correlação dos acontecimentos provenientes de diferentes domínios.
+O Master Geral e o FailSafe estabelecem a referência comum no arranque (via CAN-Principal/FailSafe e TIME_SYNC na FABRIC). Após a referência base:
 
----
+1. Grupo Sensorial sincroniza-se com a referência do Master Geral/FailSafe.
+2. Grupo Atuador sincroniza-se do mesmo modo.
+3. Funções de emergência sincronizam-se diretamente com o FailSafe.
+4. Router do GCV e Comunicação sincronizam-se como nós da CAN-Principal (com disciplina própria de vídeo/RF, ver 3.6).
 
-# 4. Sincronização Inicial
+Apenas após conclusão do processo considera-se válida a referência de cada grupo. Os mecanismos técnicos constam de COM. Após sincronização, o FailSafe mantém referência independente, de modo a prosseguir funções de segurança sem dependência de execução contínua da Missão.
 
-A sincronização temporal entre RaspberryPi e ESP32-FS deverá ocorrer durante a inicialização do sistema.
+## 3.3. Domínios temporais
 
-Esta sincronização estabelece a referência temporal comum utilizada pelos dois grupos computacionais durante a operação.
+Utilizam-se, entre outras, as referências: UTC; tempo desde inicialização; tempo desde arranque; tempo de missão; tempo de voo; tempo no modo; tempo no estado; tempo desde comunicação/aquisição/evento.
 
-Os restantes grupos computacionais apenas deverão considerar a sua referência temporal válida após concluírem o respetivo processo de sincronização.
+- **UTC**: associado, quando disponível, a sensores, eventos, estados, alertas, comandos, mudanças de modo, registos e telemetria para a estação terrestre. A disponibilidade de UTC nunca constitui dependência obrigatória do controlo de voo.
+- **Tempo monotónico**: base de intervalos (períodos, timeouts, deadlines, latências, perda de comunicação, duração de estados/modos), independente de ajustes do relógio UTC.
+- **Tempo operacional**: inicialização, arranque, missão, voo, modo e estado, para utilização interna e apresentação no solo.
 
-Os mecanismos técnicos utilizados para a sincronização são definidos na especificação COM.
+## 3.4. Frequências: periféricos, aquisição, comunicação e módulos
 
----
+- **Periféricos**: cada sensor/atuador possui frequência própria, garantida pelo grupo responsável (Módulo Menor RP2040 + Master RP2350).
+- **Aquisição**: o Grupo Sensorial adquire cada sensor à respetiva cadência, de forma independente; os dados podem ser acumulados e processados localmente antes da transmissão.
+- **Comunicação**: cada rede possui cadência própria. Exemplo: aquisição de pitot a alta cadência com publicação agregada à cadência da CAN-Principal. A separação reduz tráfego sem perda de resolução local.
+- **Módulos**: cada módulo pode ter frequência própria, consoante modo, estado, criticidade, recursos e necessidade. A alteração de frequência não compromete a estabilidade dos restantes. O detalhe consta de SW.
 
-# 5. Redundância Temporal
+## 3.5. Modelo de execução, atrasos e recuperação
 
-A arquitetura temporal não depende exclusivamente de um único grupo computacional após a sincronização inicial.
+Suportam-se execução periódica (funções com frequência definida) e execução orientada a eventos (resposta a condições). Os eventos nunca comprometem funções periódicas críticas.
 
-RaspberryPi e ESP32-FS mantêm referências temporais sincronizadas e utilizam-nas independentemente nas respetivas funções.
+O sistema deteta conclusões fora da janela prevista; cada atraso é registado e avaliado pela criticidade. A ação depende da política da função: permitir conclusão, repetir, registar, abandonar e avançar, estratégia degradada ou mecanismos de segurança. Mudanças de modo/estado aplicam políticas do novo contexto, de forma controlada.
 
-Esta característica permite que o ESP32-FS continue a efetuar as suas funções de segurança sem depender da execução contínua do RaspberryPi.
+A gestão temporal serve a segurança: atrasos, perda de sincronização ou comportamento anómalo são indicadores de falha (perda de comunicação, ausência de resposta, sincronização perdida). A resposta consta de SEC.
 
----
+## 3.6. Tempo no cluster e no GCV
 
-# 6. Domínios Temporais
+- **Cluster (FABRIC)**: TIME_SYNC e HEARTBEAT periódicos com TIMESTAMP e CRC; supervisão de latência por nó/núcleo; deteção de nó mudo e de deriva. Orçamentos de latência por tipo (ex.: MATH_RESPONSE mais restrito que HEALTH_STATUS) a fechar na matriz de latências.
+- **GCV**: disciplina de vídeo a 720p60 interno (captura→ISP→processamento) com derivação a 720p30 para o solo; timestamps de captura para correlação com navegação; jitter de codificação isolado da disciplina de voo (o atraso de vídeo nunca bloqueia o controlo). O Router reporta saúde temporal (perda de frame, deriva) na CAN-Principal.
 
-O Aerus utiliza diferentes referências temporais para diferentes finalidades.
+## 3.7. Registo e estação terrestre
 
-Entre estas encontram-se:
+As informações temporais relevantes são registadas com os dados (reconstrução cronológica, correlação entre sensores e grupos, análise de eventos/falhas, auditoria, diagnóstico). Para o solo, disponibilizam-se UTC, tempos de inicialização/arranque/missão/voo/modo, durações e diagnóstico temporal.
 
-* tempo UTC;
-* tempo desde a inicialização;
-* tempo desde o arranque;
-* tempo de missão;
-* tempo de voo;
-* tempo desde entrada num modo;
-* tempo desde alteração de estado;
-* tempo desde comunicação;
-* tempo desde aquisição de dados;
-* tempo desde ocorrência de eventos.
+## 3.8. Evolução
 
-Cada referência temporal deverá possuir uma finalidade claramente definida.
-
----
-
-# 7. Tempo UTC
-
-O tempo UTC deverá estar disponível no sistema sempre que exista uma referência válida.
-
-O timestamp UTC deverá ser associado aos dados cuja rastreabilidade temporal seja necessária, incluindo, quando aplicável:
-
-* dados de sensores;
-* eventos;
-* estados;
-* alertas;
-* alarmes;
-* comandos;
-* alterações de modo;
-* registos de missão;
-* dados destinados a auditoria;
-* telemetria disponibilizada à GroundStation.
-
-A disponibilidade de UTC não deverá constituir uma dependência obrigatória para o funcionamento das funções de controlo de voo.
+Admite-se adição de grupos, periféricos, módulos e mecanismos sem alteração dos princípios.
 
 ---
 
-# 8. Tempo Monotónico
+# 4. Exemplos
 
-O sistema deverá utilizar referências temporais monotónicas para cálculos dependentes de intervalos de tempo.
+## Exemplo 1 — Separação aquisição/comunicação
 
-Estas referências deverão ser independentes de alterações do relógio UTC.
+```text
+Pitot: aquisição a 200 Hz no RP2040 (filtragem local).
+Master Sensorial: agrega e publica a 50 Hz na CAN-Principal (TLV).
+Fusão consome a 50 Hz; deteção de rajada preservada pelo pré-processamento local.
+```
 
-São exemplos de aplicações:
+## Exemplo 2 — Timeout IPC
 
-* medição de períodos;
-* determinação de *timeouts*;
-* cálculo de *deadlines*;
-* medição de latências;
-* controlo de frequências;
-* deteção de perda de comunicação;
-* cálculo de duração de estados;
-* cálculo de duração de modos.
+```text
+NAV envia MATH_REQUEST (REQ_ID=77, t0).
+Se MATH_RESPONSE não chega até t0+limite → NAV aplica última válida
++ contador; Supervisão regista atraso; após N falhas → FAULT.
+```
 
----
+## Exemplo 3 — Sincronização
 
-# 9. Tempo Operacional
+```text
+Arranque: MG ↔ FailSafe acordam base (TIME_SYNC).
+Sensorial/Atuador alinham-se; o Router do GCV alinha o relógio de saúde/telemetria; o relógio de frame
+mantém disciplina própria com timestamp de captura correlacionável.
+```
 
-O Aerus deverá disponibilizar referências temporais relativas ao funcionamento da aeronave.
+## Exemplo 4 — Tabela de cadências (valores ilustrativos, a fechar)
 
-Entre estas encontram-se:
-
-### Tempo desde inicialização
-
-Tempo decorrido desde o início do processo de inicialização do sistema.
-
-### Tempo desde arranque
-
-Tempo decorrido desde o arranque operacional da aeronave.
-
-### Tempo de missão
-
-Tempo decorrido desde o início da missão.
-
-### Tempo de voo
-
-Tempo correspondente ao período de voo da aeronave.
-
-### Tempo no modo atual
-
-Tempo decorrido desde a entrada no modo operacional atual.
-
-### Tempo no estado atual
-
-Tempo decorrido desde a última alteração do estado relevante.
-
-Estas referências deverão estar disponíveis para utilização interna e, quando aplicável, para apresentação na GroundStation.
+| Função | Cadência alvo | Rede | Relógio |
+|--------|---------------|------|---------|
+| Aquisição inercial | Alta (por sensor) | Intra | Monotónico local |
+| Publicação sensorial | Média | Principal | Comum sincronizado |
+| HEARTBEAT cluster | Alta/periódica | FABRIC | Monotónico + TIMESTAMP |
+| Vídeo interno | 60 fps | Interna GCV | Relógio de vídeo |
+| Vídeo para solo | 30 fps | RJ45-RS→RF | Relógio de vídeo |
 
 ---
 
-# 10. Frequência dos Periféricos
+# 5. Interfaces Com Outros Documentos
 
-Cada sensor e atuador poderá possuir uma frequência operacional própria.
-
-A frequência deverá ser definida individualmente para cada periférico de acordo com as suas características e necessidades funcionais.
-
-O grupo computacional responsável deverá garantir o cumprimento da frequência definida para cada periférico.
-
-A frequência de aquisição de um periférico não deverá ser confundida com a frequência de comunicação entre grupos computacionais.
-
----
-
-# 11. Frequência de Aquisição
-
-O Grupo Computacional ESP32-S deverá executar a aquisição dos diferentes sensores de acordo com as frequências individuais definidas para cada sensor.
-
-Diferentes sensores poderão, portanto, ser adquiridos a frequências diferentes e independentemente uns dos outros.
-
-Os dados adquiridos poderão ser temporariamente acumulados e processados internamente pelo ESP32-S antes da sua transmissão.
+| Documento | Relação |
+|-----------|---------|
+| SYS-002/005 | Grupos e redes cuja disciplina aqui se define |
+| SYS-006/007/009 | Estados, modos e arranque que condicionam janelas |
+| SW (políticas temporais) | Deadlines/timeouts/recuperação por módulo |
+| COM | Mecanismos de sincronização e transporte |
+| SEN/ACT/SEC | Cadências de periféricos e resposta a anomalias |
 
 ---
 
-# 12. Frequência de Comunicação
+# 6. Estado / Pontos Em Aberto
 
-A comunicação entre grupos computacionais possui uma frequência própria, independente das frequências individuais dos periféricos.
+- **Estado**: Em Desenvolvimento.
+- **Pontos em aberto**: matriz de periodicidade/latência/prioridade por mensagem; limites de HEARTBEAT/TIME_SYNC; orçamentos FABRIC vs CAN; disciplina de timestamp de vídeo; apresentação temporal no solo; validação por ensaio.
 
-O Grupo Computacional ESP32-S poderá, por exemplo, adquirir dados de um determinado sensor a uma frequência superior à frequência utilizada para comunicação com os restantes grupos computacionais.
-
-Nesse caso, os dados adquiridos são acumulados, processados e organizados internamente, sendo posteriormente transmitidos de acordo com a frequência de comunicação definida.
-
-Esta separação permite reduzir tráfego desnecessário sem diminuir a frequência de aquisição necessária ao processamento local.
-
----
-
-# 13. Frequência dos Módulos
-
-Os módulos de software poderão possuir frequências de execução diferentes.
-
-A frequência de execução de um módulo poderá depender de:
-
-* modo operacional;
-* estado do sistema;
-* criticidade da função;
-* disponibilidade de recursos;
-* necessidade operacional.
-
-A alteração da frequência de execução não deverá comprometer a estabilidade temporal dos restantes módulos.
-
-As frequências e políticas específicas de cada módulo são definidas nas especificações da área SW.
-
----
-
-# 14. Modelo Temporal de Execução
-
-O Aerus deverá utilizar um modelo temporal estável capaz de manter o funcionamento previsível perante pequenas variações na ocorrência de eventos.
-
-O sistema deverá, simultaneamente, permanecer preparado para alterações de:
-
-* modo;
-* estado;
-* carga computacional;
-* eventos;
-* condições operacionais.
-
-As alterações relevantes poderão desencadear procedimentos temporais diferentes dos utilizados durante a operação estável.
-
----
-
-# 15. Execução Periódica e Orientada a Eventos
-
-A arquitetura temporal suporta simultaneamente execução periódica e mecanismos orientados a eventos.
-
-A execução periódica é utilizada quando uma função necessita de uma frequência temporal definida.
-
-A execução orientada a eventos é utilizada quando uma função deverá responder à ocorrência de uma condição ou acontecimento específico.
-
-A utilização de eventos não deverá comprometer a estabilidade temporal das funções periódicas críticas.
-
----
-
-# 16. Atrasos Temporais
-
-O sistema deverá detetar situações em que uma operação não seja concluída dentro da sua janela temporal prevista.
-
-Um atraso deverá ser registado e avaliado de acordo com a criticidade da função afetada.
-
-A existência de um atraso não deverá, por si só, determinar uma ação universal para todos os módulos.
-
-A ação a executar dependerá da política temporal definida para a função correspondente.
-
----
-
-# 17. Recuperação Temporal
-
-Quando uma execução ultrapassar a janela temporal definida, poderão ser aplicados mecanismos de recuperação.
-
-Dependendo da criticidade da função, estes poderão incluir:
-
-* permitir a conclusão da execução;
-* repetir a operação;
-* registar o atraso;
-* abandonar a execução atual;
-* avançar para o ciclo seguinte;
-* executar uma estratégia degradada;
-* desencadear mecanismos de segurança.
-
-As regras concretas são definidas pelas políticas temporais de cada módulo.
-
----
-
-# 18. Segurança Temporal
-
-A gestão temporal deverá considerar a possibilidade de atrasos, perda de sincronização ou comportamento temporal anómalo como potenciais indicadores de falha.
-
-As funções de segurança deverão poder utilizar informação temporal proveniente dos diferentes grupos computacionais para determinar:
-
-* perda de comunicação;
-* ausência de resposta;
-* execução atrasada;
-* falha de sincronização;
-* comportamento temporal anómalo.
-
-A resposta a estas condições é definida nas especificações da área SEC.
-
----
-
-# 19. Alterações de Modo e Estado
-
-A alteração do modo operacional ou de estados relevantes poderá alterar as necessidades temporais dos módulos.
-
-Quando ocorrer uma alteração deste tipo, os módulos afetados deverão aplicar as políticas temporais correspondentes ao novo contexto operacional.
-
-Esta alteração deverá ocorrer de forma controlada, evitando transições temporais instáveis.
-
----
-
-# 20. Registo Temporal
-
-As informações temporais relevantes deverão poder ser registadas juntamente com os dados a que correspondem.
-
-O registo deverá permitir, quando aplicável:
-
-* reconstrução cronológica da operação;
-* correlação entre sensores;
-* correlação entre grupos computacionais;
-* análise de eventos;
-* análise de falhas;
-* auditoria;
-* diagnóstico.
-
----
-
-# 21. GroundStation
-
-As referências temporais relevantes poderão ser disponibilizadas à GroundStation.
-
-Entre os valores que poderão ser apresentados encontram-se:
-
-* UTC;
-* tempo desde inicialização;
-* tempo desde arranque;
-* tempo de missão;
-* tempo de voo;
-* tempo no modo atual;
-* duração de estados;
-* informação temporal relevante para diagnóstico.
-
----
-
-# 22. Evolução
-
-A arquitetura temporal deverá permitir a introdução futura de novos grupos computacionais, periféricos, módulos e mecanismos de sincronização sem alterar os princípios fundamentais definidos nesta especificação.
-
----
-
-# 23. Referências
-
-- SYS-002 — Arquitetura_Computacional
-- SYS-005 — Fluxo_Global_de_Informacao
-- SYS-006 — Gestao_de_Estados
-- SYS-007 — Modos_de_Funcionamento
-- SYS-009 — Arranque_e_Encerramento
-- SW — Especificações de Software
-- COM — Especificações de Comunicações
-- SEN — Especificações de Sensores
-- ACT — Especificações de Atuadores
-- SEC — Especificações de Segurança

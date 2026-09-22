@@ -1,10 +1,10 @@
-# SYS-007 — Modos_de_Funcionamento
+# SYS-007 — Modos de Funcionamento
 
 | Campo             | Valor                    |
 |-------------------|--------------------------|
 | **Código**        | SYS-007                  |
 | **Título**        | Modos de Funcionamento   |
-| **Versão**        | 1.0                      |
+| **Versão**        | 2.0                      |
 | **Estado**        | Em Desenvolvimento       |
 | **Autor**         | ShegaPT                  |
 | **Classificação** | Especificação de Sistema |
@@ -13,151 +13,113 @@
 
 # 1. Objetivo
 
-O presente documento define a arquitetura geral dos modos de funcionamento do sistema Aerus.
+O presente documento define a arquitetura geral dos modos de funcionamento do sistema AERUS. Os modos representam a condição operacional global da aeronave desde o período anterior ao arranque até ao encerramento completo.
 
-Os modos representam a condição operacional global da aeronave ao longo de toda a operação, desde o momento anterior ao arranque até ao encerramento completo do sistema.
-
-Este documento define apenas os princípios gerais de funcionamento, não especificando os critérios individuais de entrada, saída ou validação de cada modo.
+Definem-se apenas princípios gerais; os critérios individuais de entrada, saída e validação de cada modo, bem como as checklists, constam de OPS e das especificações de cada domínio.
 
 ---
 
-# 2. Filosofia
+# 2. Âmbito
 
-O Aerus opera sempre num único modo global.
-
-O modo de funcionamento representa a fase operacional atual da aeronave e determina as regras gerais que deverão ser aplicadas pelo sistema durante esse período.
-
-Todos os grupos computacionais trabalham de forma coordenada para suportar o modo atualmente ativo.
+Aplica-se à sequência operacional global, à gestão do modo ativo, à sincronização entre grupos (incluindo Master Geral e GCV), à gestão de módulos por modo e à articulação com procedimentos de emergência (SEC), sem os quais nenhum modo se considera completo.
 
 ---
 
-# 3. Exclusividade
+# 3. Descrição Detalhada
 
-Em qualquer instante existe apenas um modo de funcionamento ativo.
+## 3.1. Filosofia e exclusividade
 
-Não é permitida a existência simultânea de múltiplos modos operacionais.
+O AERUS opera sempre num único modo global. O modo representa a fase operacional atual e determina as regras gerais aplicadas pelo sistema nesse período. Todos os grupos trabalham de forma coordenada para suportar o modo ativo.
 
-Sempre que ocorre uma transição, o novo modo substitui integralmente o anterior.
+Em qualquer instante existe apenas um modo ativo. Não é permitida coexistência de modos. Cada transição substitui integralmente o modo anterior, após validação das condições do modo seguinte. Não existem transições arbitrárias.
 
----
+## 3.2. Sequência operacional de referência
 
-# 4. Sequência Operacional
+```text
+Before_Start → After_Start → Taxi (opcional) → Line_Up → Before_Takeoff
+→ After_Takeoff → Climb → In_Flight → Descent → Approach → Before_Landing
+→ Landing → After_Landing → Parking (opcional) → Securing_Aircraft → Shutdown
+```
 
-A arquitetura base do Aerus define a seguinte sequência operacional:
+Consoante a missão, etapas podem ser omitidas ou substituídas por equivalentes, com observância das regras da arquitetura. `Taxi` e `Parking` são opcionais, dependentes da capacidade de deslocação em solo. A granularidade (Climb/Descent/Approach/Before_Landing) é mantida por compatibilidade operacional e pode ser agregada por parametrização quando a aeronave o justifique.
 
-1. Before_Start
-2. After_Start
-3. Taxi
-4. Line_Up
-5. Before_Takeoff
-6. After_Takeoff
-7. Climb
-8. In_Flight
-9.  Descent
-10. Approach
-11. Before_Landing
-12. Landing
-13. After_Landing
-14. Parking
-15. Securing_Aircraft
-16. Shutdown
+## 3.3. Transições, checklists e tolerâncias
 
-Esta sequência constitui a operação de referência do sistema.
+Cada modo associa-se a uma checklist (condições de transição). As checklists operacionais são especificadas em OPS. Admitem-se tolerâncias destinadas exclusivamente a compensar incertezas de medição, oscilações de sensores e atrasos naturais; nunca com compromisso da segurança.
 
-Dependendo do tipo de missão, determinadas etapas poderão ser ignoradas ou substituídas por outras equivalentes, desde que respeitem as regras definidas pela arquitetura.
+## 3.4. Gestão dos módulos por modo
 
----
+Cada modo pode exigir regimes distintos por módulo: ativo, em espera, suspenso, reativado. O objetivo é a otimização de recursos sem compromisso do voo. Exemplos normativos:
 
-# 5. Transições
+| Modo | Comportamento típico |
+|------|----------------------|
+| After_Start | Todos os grupos em autoteste; GCV em arranque sequenciado; Comunicação em escuta |
+| In_Flight | Todos os serviços críticos ativos; NPU de visão como função futura, não obrigatória |
+| Approach/Landing | Módulos não necessários em espera controlada; sensores de proximidade com prioridade elevada |
+| After_Landing/Parking | Desativação progressiva com observância de dependências |
 
-A passagem entre modos apenas poderá ocorrer quando forem satisfeitas as condições definidas para o modo seguinte.
+As regras concretas constam de SW; a supervisão de conformidade cabe ao Diagnóstico e ao FailSafe.
 
-Cada transição deverá ser validada antes da sua execução.
+## 3.5. Gestão do modo e modos de emergência
 
-Não são permitidas transições arbitrárias entre modos.
+Em funcionamento normal, a gestão do modo é efetuada pelo Grupo de Missão (Master Geral), sob validação permanente do Controlo de Voo. O FailSafe pode impedir ou alterar a evolução dos modos sempre que a segurança o exija.
 
----
+Os procedimentos de emergência (FailSafe/FailSecure) não constituem modos independentes. Quando ocorre emergência, mantém-se o modo da fase em curso, com ativação em paralelo das regras de segurança (SEC). Deste modo, preserva-se o contexto operacional e impõe-se a proteção.
 
-# 6. Checklists
+## 3.6. Sincronização e comportamento por grupo
 
-Cada modo operacional encontra-se associado a um conjunto de verificações designado por checklist.
+Todos os grupos tomam conhecimento do modo ativo através das redes normativas (CAN-Principal para operação; CAN-FailSafe para segurança; FABRIC para coordenação interna do cluster; Router para o GCV). Perante degradação (ex.: falha de 1x RP2350 com perda de Missão), o Voo mantém controlo seguro e o FailSafe impõe o regime compatível com o modo em curso (ex.: órbita de espera em In_Flight, abortagem em Approach, conforme SEC/OPS).
 
-A checklist define todas as condições que deverão estar satisfeitas antes da transição para o modo seguinte.
+## 3.7. Escalabilidade
 
-As checklists operacionais são especificadas na documentação da área OPS.
+Admite-se adição, remoção ou alteração de modos sem compromisso da estrutura. Cada novo modo define condições, checklist, regime de módulos e comportamento em falha.
 
 ---
 
-# 7. Tolerâncias
+# 4. Exemplos
 
-A arquitetura admite pequenas tolerâncias durante a validação das condições de transição.
+## Exemplo 1 — Transição validada
 
-Estas tolerâncias destinam-se exclusivamente a compensar:
+```text
+Estado: Line_Up. Checklist Before_Takeoff: sensores OK, atuadores OK,
+  vento dentro de limites, missão carregada, FailSafe ARMADO.
+  → Missão solicita, Voo valida, modo passa a Before_Takeoff.
+  Em falha de validação → permanência em Line_Up + motivo registado.
+```
 
-- incertezas de medição;
-- pequenas oscilações dos sensores;
-- atrasos naturais do sistema.
+## Exemplo 2 — Emergência sem mudança de modo
 
-As tolerâncias nunca deverão comprometer a segurança da operação.
+```text
+Modo: In_Flight. Falha de Missão (RP2350 #3).
+  → modo permanece In_Flight; FailSafe impõe regime SEGURO (órbita),
+  Voo mantém controlo, Comunicação informa o solo, Diagnóstico regista.
+```
 
----
+## Exemplo 3 — Regime de módulos
 
-# 8. Gestão dos Módulos
-
-Cada modo poderá definir diferentes requisitos relativamente aos módulos de software existentes.
-
-Dependendo do modo operacional, determinados módulos poderão:
-
-- permanecer ativos;
-- entrar em espera;
-- ser suspensos temporariamente;
-- ser reativados.
-
-Esta gestão tem como objetivo otimizar os recursos computacionais disponíveis sem comprometer o correto funcionamento da aeronave.
-
-As regras específicas encontram-se definidas nas especificações da área SW.
-
----
-
-# 9. Alteração do Modo
-
-Durante o funcionamento normal, a gestão do modo operacional é efetuada pelo Grupo Computacional RaspberryPi.
-
-Sempre que necessário, o Grupo Computacional ESP32-FS poderá impedir ou alterar a evolução normal dos modos operacionais caso a segurança da aeronave assim o exija.
+```text
+Approach: sensores de proximidade a cadência máxima;
+  codificador do GCV mantém 720p30 para o solo;
+  planeamento de longo curso em espera;
+  tudo por decisão coordenada Missão→Voo, supervisionada pelo FailSafe.
+```
 
 ---
 
-# 10. Modos de Emergência
+# 5. Interfaces Com Outros Documentos
 
-Os procedimentos de emergência não constituem modos operacionais independentes.
-
-Quando ocorre uma situação de FailSafe ou FailSecure, o sistema mantém o modo operacional correspondente à fase da missão em curso, sendo ativadas em paralelo as respetivas regras de segurança.
-
-A gestão destes procedimentos encontra-se definida nas especificações da área SEC.
-
----
-
-# 11. Sincronização
-
-Todos os grupos computacionais deverão possuir conhecimento do modo operacional atualmente ativo.
-
-A alteração do modo deverá ser propagada a todos os grupos computacionais através dos mecanismos definidos pela arquitetura de comunicações.
+| Documento | Relação |
+|-----------|---------|
+| SYS-006 Estados | Estados que suportam a avaliação de cada modo |
+| SYS-008 Temporal | Janelas e cadências por modo |
+| SYS-009 Arranque/Encerramento | Concretização dos modos iniciais e finais |
+| OPS | Checklists e procedimentos por modo |
+| SW/SEC/COM | Regimes, emergência e propagação do modo |
 
 ---
 
-# 12. Escalabilidade
+# 6. Estado / Pontos Em Aberto
 
-A arquitetura permite a introdução futura de novos modos operacionais.
+- **Estado**: Em Desenvolvimento.
+- **Pontos em aberto**: critérios de entrada/saída por modo; agregação de Climb/Descent/Approach por parametrização; regimes de módulos por modo e aeronave; comportamento degradado por modo em falha de cluster; ensaios de transição.
 
-A adição, remoção ou alteração de modos não deverá comprometer a estrutura geral definida nesta especificação.
-
----
-
-# 13. Referências
-
-- SYS-006 — Gestao_de_Estados
-- SYS-008 — Gestao_Temporal
-- OPS — Procedimentos Operacionais
-- SW — Especificações de Software
-- COM — Especificações de Comunicações
-- SEC — Especificações de Segurança

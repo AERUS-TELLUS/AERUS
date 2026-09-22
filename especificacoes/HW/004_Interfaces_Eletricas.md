@@ -1,451 +1,191 @@
-# HW-004 — Interfaces_Eletricas
+# HW-004 — Interfaces Elétricas
 
-| Campo             | Valor                     |
-| ----------------- | ------------------------- |
-| **Código**        | HW-004                    |
-| **Título**        | Interfaces Elétricas      |
-| **Versão**        | 1.0                       |
-| **Estado**        | Em Desenvolvimento        |
-| **Autor**         | ShegaPT                   |
+| Campo | Valor |
+| --- | --- |
+| **Código** | HW-004 |
+| **Título** | Interfaces Elétricas |
+| **Versão** | 2.0 |
+| **Estado** | Em Desenvolvimento |
+| **Autor** | ShegaPT |
 | **Classificação** | Especificação de Hardware |
+| **Referência** | docs/Esquemas/Arquitetura-Computacional.md |
 
 ---
 
 # 1. Objetivo
 
-O presente documento define os princípios e requisitos gerais aplicáveis às interfaces elétricas utilizadas pelo Aerus.
+O presente documento define os princípios e requisitos gerais das interfaces elétricas do sistema AERUS-TELLUS: sinais digitais e analógicos, GPIO, ADC, PWM, retorno de atuadores, CAN-Principal, série sobre RJ45 para as placas rádio, MIPI CSI, DDR/LPDDR, Ethernet, alimentação local e proteções.
 
-O objetivo é estabelecer uma arquitetura elétrica coerente entre grupos computacionais, sensores, atuadores, periféricos e sistemas de alimentação, sem definir prematuramente componentes, pinouts ou valores elétricos específicos.
-
----
-
-# 2. Princípio Geral
-
-Cada interface elétrica deverá ser definida de acordo com a função que desempenha e com as características do equipamento que interliga.
-
-A interface deverá garantir, conforme aplicável:
-
-* compatibilidade elétrica;
-* integridade do sinal;
-* proteção dos equipamentos;
-* isolamento quando necessário;
-* capacidade de operação dentro dos limites definidos;
-* deteção de condições anormais quando aplicável;
-* manutenção e substituição adequadas.
+Explica o que cada interface deve garantir (compatibilidade, integridade, proteção, estado seguro), como dimensionar cada utilização e que constrangimentos de impedância, comprimento e encaminhamento condicionam o desenho das PCB — com valores finais a fechar no projeto detalhado a partir da documentação oficial do silício dos RP2040/RP2350, da documentação NXP.
 
 ---
 
-# 3. Domínios Elétricos
+# 2. Âmbito
 
-A arquitetura deverá distinguir entre:
+Abrange:
+
+* domínios de sinal face a domínios de potência;
+* GPIO, ADC, PWM, retorno (feedback) e condicionamento;
+* CAN-Principal (nível físico), RJ45-RS, UART/SPI/I2C locais, Ethernet na carrier;
+* MIPI CSI e LPDDR/eMMC na COMPUTE-VISION-CARRIER (regras, não valores finais);
+* isolamento, proteção, estado seguro, arranque e encerramento;
+* identificação, modularidade e compatibilidade.
+
+Não abrange:
+
+* árvore de alimentação completa (ver HW-005);
+* protocolo lógico e CAN IDs (ver HW-006 e COM);
+* periféricos concretos (ver HW-007, SEN, ACT).
+
+---
+
+# 3. Descrição
+
+## 3.1 Princípio geral
+
+Cada interface é dimensionada pela função que desempenha e pelo equipamento que interliga. Deve garantir, conforme aplicável: compatibilidade elétrica, integridade do sinal, proteção dos equipamentos, isolamento entre domínios, operação dentro de limites e deteção de condições anómalas.
 
 ```text
-Alimentação
-     │
-     ├── Grupos Computacionais
-     ├── Sensores
-     ├── Atuadores
-     └── Outros Periféricos
+Alimentação (12/5/3,3 V + rails locais)
+  │
+  ├── Grupo Sensorial / Atuador / Nós / Cluster / GCV
+  ├── Sensores, atuadores, ESC, câmara, rádios
+  └── Massas e blindagens (estrela, ponto único)
 ```
 
-A existência de uma ligação elétrica entre dois equipamentos não implica que estes pertençam ao mesmo domínio funcional ou possuam o mesmo nível de autoridade.
+A existência de uma ligação elétrica nunca implica autoridade funcional. Sinal e autoridade vivem em camadas distintas.
 
-As interfaces deverão ser definidas de modo a preservar essa separação.
+## 3.2 Capacidades elétricas dos processadores
 
----
+| Recurso | RP2040 (COMPUTE-SENSORIAL, COMPUTE-ACTUATOR simples) | RP2350B/2354B (COMPUTE-NODE, COMPUTE-ACTUATOR exigente, CLUSTER, Router GCV) | i.MX 8M Plus (módulo do GCV) |
+| --- | --- | --- | --- |
+| GPIO | 30, 3,3 V, com controlo de slew e pull | 48 na variante B, 3,3 V, mais PWM e ADC | Bancos de aplicação (níveis da carrier); GPIO de sistema via expansores quando necessário |
+| ADC | 4 entradas, 12 bits, referência interna/externa | 8 entradas na variante B | Aquisição de precisão entregue aos RP2040/RP2350; i.MX não substitui o ADC de campo |
+| PWM | 16 canais (slices com dois canais) | 24 canais na variante B | PWM de aplicação, retroiluminação e gestão |
+| PIO | 8 máquinas (2 blocos) — UART/SPI/I2C extra, WS2812, DShot simples, descodificação | 12 máquinas (3 blocos) — protocolos dedicados, Interconnect Fabric, CAN com controlador | Não aplicável; periféricos dedicados |
+| Série | UART ×2, SPI ×2, I2C ×2, USB 1.1 | UART ×2, SPI ×2, I2C ×2, USB 1.1 | UART ×4, eCSPI, I2C, SAI, USB 3.0/2.0, PCIe, 2 × GbE, 2 × CAN-FD |
+| Corrente por pino | Limitada (ordem de mA; ver datasheet); saídas de potência sempre via andar dedicado | Idem; nunca comandar servo/relé diretamente | Idem; comando via drivers na carrier |
 
-# 4. Tipos de Interface
+Regra de ouro: nenhum pino de microprocessador alimenta diretamente servo, motor, relé ou longa cablagem de potência. Existe sempre um andar de adaptação (driver, MOSFET, buffer, transceptor).
 
-O Aerus poderá utilizar diferentes tipos de interfaces elétricas de acordo com o periférico ou grupo computacional.
+## 3.3 GPIO, ADC, PWM e retorno
 
-Entre os tipos possíveis encontram-se:
+**GPIO:** cada utilização declara direção, estado inicial (com pull definido), nível ativo, comportamento em arranque/encerramento/erro. Nenhum GPIO que afete segurança permanece flutuante.
 
-* sinais digitais;
-* sinais analógicos;
-* GPIO;
-* ADC;
-* PWM;
-* sinais de estado;
-* sinais de *feedback*;
-* interfaces de comunicação;
-* interfaces de alimentação;
-* interfaces de controlo.
+**ADC:** declarar gama, resolução efetiva, referência, impedância de fonte, frequência de amostragem, filtragem anti-aliasing, proteção contra sobretensão e diagnóstico de fio cortado. O condicionamento (divisor, amplificador, filtro) vive junto ao RP2040/RP2350 do nó, não a metros de distância.
 
-O tipo concreto utilizado deverá ser definido para cada periférico.
+**PWM:** declarar frequência, resolução, gama de impulso (ex.: 1000–2000 µs para servos, a confirmar por atuador), estado de inicialização (saída em nível seguro, sem impulsos espúrios), limites e comportamento em perda de comando (congelar, centrar ou desligar — conforme atuador, ver ACT e SEC).
 
----
+**Retorno (feedback):** posição, rotação, corrente, tensão, temperatura ou estado do controlador (incluindo ESC). A ausência de codificador não significa ausência de retorno: a eletrónica do controlador pode publicar estado por série. O retorno é adquirido pelo mesmo COMPUTE-ACTUATOR que comanda, fechando o lacete local de verificação.
 
-# 5. Interfaces Digitais
+## 3.4 CAN-Principal (R1) — nível físico
 
-As interfaces digitais deverão ser utilizadas quando a informação necessária puder ser representada através de estados discretos.
+Barramento CAN FD em par trançado blindado, 120 Ω em cada extremidade, stubs curtos, transceptores com modo silencioso e proteção. Cada PCB expõe o barramento em ficha normalizada com CAN_H, CAN_L, massa de sinal e, quando aplicável, deteção de presença. Velocidades de arbitragem e de dados, alocação de identificadores e fragmentação pertencem a HW-006/COM; aqui define-se apenas a integridade física: continuidade, terminação, isolamento (quando exigido entre domínios) e proteção contra transientes.
 
-Poderão ser utilizadas para:
+## 3.5 Série sobre RJ45 para COMM-RF (R4/R5)
 
-* estados;
-* sinais de ativação;
-* sinais de confirmação;
-* deteção de condições;
-* comandos simples;
-* entradas ou saídas de periféricos.
+As três placas COMM-RF (5,8 GHz, 2,4 GHz, 868 MHz) ligam-se ao sistema exclusivamente por cabo RJ45 de 8 vias:
 
-Os níveis lógicos concretos deverão ser definidos de acordo com os equipamentos utilizados.
+```text
+GCV ──RJ45──► COMM-RF 5,8 GHz (TX vídeo/telemetria descendente)
+Master Geral ──RJ45──► COMM-RF 2,4 GHz (RX comando)
+Master Geral ──RJ45──► COMM-RF 868 MHz (telemetria bidirecional)
+```
 
----
+Cada cabo transporta: par série (TX/RX), alimentação claramente separada do sinal, massa e sinalização de presença/identificação da placa. Não se expõe I2C/SPI bruto ao exterior nem se partilha o CAN-Principal com as placas rádio. A pinagem exata do RJ45-RS, proteções e comprimentos máximos são objeto do projeto detalhado (pontos em aberto).
 
-# 6. Interfaces Analógicas
+## 3.6 Interfaces locais UART/SPI/I2C e Ethernet
 
-As interfaces analógicas poderão ser utilizadas para aquisição de grandezas físicas ou estados representados através de valores contínuos.
+UART/SPI/I2C vivem **dentro** de cada PCB ou em ligações curtíssimas a sensores/atuadores adjacentes (ver HW-007). Não constituem redes de sistema. A Ethernet existe na COMPUTE-VISION-CARRIER (i.MX ↔ Router ↔ ficha de diagnóstico, e, quando aplicável, interligação interna de alto débito); não é barramento partilhado do veículo.
 
-Quando uma interface analógica for utilizada, deverão ser considerados:
+## 3.7 MIPI CSI, LPDDR e eMMC no GCV (regras)
 
-* intervalo de tensão;
-* resolução;
-* precisão;
-* ruído;
-* referência;
-* impedância;
-* frequência de aquisição;
-* proteção da entrada.
+A COMPUTE-VISION-CARRIER é a única PCB com requisitos de muito alta velocidade:
 
-Os valores concretos serão definidos nas especificações dos respetivos periféricos.
+* **MIPI CSI (câmara → i.MX):** FFC o mais curto possível, pares diferenciais com impedância controlada, comprimentos equalizados, referência de massa contínua, sem mudanças de camada desnecessárias, afastamento de comutação. Larguras, espaçamentos e tolerâncias a extrair do guia de layout NXP (por definir).
+* **LPDDR (i.MX → memória):** topologia, comprimentos, equalização e plano de referência estritamente segundo o guia NXP e o empilhamento escolhido; sem desvios criativos.
+* **eMMC e relógios:** encaminhamento curto, desacoplamento segundo PMIC/NXP, cristal com guardas e massa dedicada.
 
----
+Qualquer revisão da carrier sem verificação de impedância, simulação (quando exigível) e revisão de layout face ao guia NXP é considerada incompleta.
 
-# 7. ADC
+## 3.8 Isolamento, proteção, estado seguro, arranque e encerramento
 
-Os conversores analógico-digital utilizados pelo Aerus deverão possuir características compatíveis com os sensores associados.
+**Isolamento:** aplicar (ótico, magnético ou por transceptor isolado) entre potência e sinal, entre domínios de segurança e operação normal quando a análise o exigir, e em interfaces com o exterior (rádios, diagnóstico).
 
-A utilização de ADC deverá considerar:
+**Proteção (por interface, conforme aplicável):** sobretensão (TVS), sobrecorrente (fusível/PTC/eFuse), curto-circuito, inversão de polaridade, transientes (load-dump do lado da bateria, ESD do lado do operador), filtragem EMC.
 
-* resolução;
-* frequência de aquisição;
-* intervalo de entrada;
-* referência;
-* erro de conversão;
-* ruído;
-* estabilidade.
+**Estado seguro:** cada interface com efeito na aeronave declara o seu estado em arranque, perda de comunicação, falha do controlador, reinicialização, ausência de retorno e entrada em FailSafe. Em arranque, as saídas nascem em nível seguro antes de qualquer módulo comandar; no encerramento, motores e superfícies são postos em condição apropriada antes de cortar energia (sequências funcionais em SYS; execução elétrica aqui).
 
-O processamento posterior dos valores convertidos pertence ao domínio do Grupo Computacional responsável pela aquisição.
+## 3.9 Identificação, modularidade e compatibilidade
+
+Cada ficha e cada feixe são identificados por origem, destino, função, tipo de sinal, alimentação associada, grupo e periférico. Nenhum periférico se liga sem verificação documentada de tensão, corrente, níveis lógicos, frequência, polaridade, impedância e isolamento; a incompatibilidade resolve-se com adaptador dedicado, nunca com improviso. A modularidade exige que trocar um sensor, atuador ou nó não obrigue a redesenhar o sistema.
 
 ---
 
-# 8. GPIO
+# 4. Exemplos
 
-Os GPIO poderão ser utilizados para interfaces digitais simples.
+## Exemplo 1 — Entrada analógica de temperatura
 
-Cada utilização deverá definir explicitamente:
+```text
+NTC ─(divisor + filtro RC junto ao RP2040)─► ADC do COMPUTE-SENSORIAL
+  → 12 bits, referência externa estável, amostragem sobredimensionada + média
+  → deteção de fio cortado por gama (fora de escala = inválido)
+  → publicação normalizada em °C + qualidade
+```
 
-* direção;
-* estado inicial;
-* nível ativo;
-* comportamento em erro;
-* comportamento durante arranque;
-* comportamento durante encerramento.
+## Exemplo 2 — Saída PWM para servo com retorno
 
-Um GPIO não deverá permanecer indefinido quando o seu estado possa afetar a segurança ou o funcionamento da aeronave.
+```text
+Master Geral ─CAN─► COMPUTE-ACTUATOR (RP2040)
+  → verifica limites 1000–2000 µs → gera PWM a 50 Hz
+  → lê retorno (potenciómetro do servo ou estado do controlador)
+  → publica posição real + diagnóstico; em timeout CAN, aplica posição segura
+```
 
----
+## Exemplo 3 — Ligação rádio via RJ45
 
-# 9. PWM
-
-PWM poderá ser utilizado para controlo de determinados atuadores e periféricos.
-
-A utilização de PWM deverá considerar:
-
-* frequência;
-* resolução;
-* ciclo de trabalho;
-* estado de inicialização;
-* estado de falha;
-* limites mínimo e máximo;
-* comportamento quando o módulo responsável deixa de executar.
-
-Os parâmetros concretos deverão ser definidos em função do atuador.
+```text
+GCV (Router RP2350) ─RJ45 (série + alimentação + presença)─► COMM-RF 5,8 GHz
+  → stream 720p30 + telemetria; placa identificada por resistência de presença;
+  → ausência = evento de diagnóstico, sem afetar CAN-Principal
+```
 
 ---
 
-# 10. Interfaces de Feedback
+# 5. Interfaces
 
-Os atuadores deverão, sempre que disponibilizem essa capacidade, fornecer informação que permita determinar o seu estado ou resposta.
-
-O *feedback* poderá ser obtido através de:
-
-* posição;
-* rotação;
-* estado elétrico;
-* carga;
-* sinal de retorno;
-* informação disponibilizada pelo controlador do atuador;
-* outro método adequado.
-
-A ausência de um encoder físico não implica necessariamente ausência de *feedback*.
-
-A forma de aquisição dependerá das características do atuador e da respetiva eletrónica.
+| Interface | Suporte físico | Capítulo de detalhe |
+| --- | --- | --- |
+| GPIO/ADC/PWM/retorno | Pistas curtas + condicionamento local + fichas polarizadas | §3.3, HW-007, SEN, ACT |
+| CAN-Principal | Par trançado blindado, 120 Ω, stubs curtos | §3.4, HW-006 |
+| RJ45-RS (3 × COMM-RF) | Cabo RJ45 8 vias, série + alimentação + presença | §3.5, HW-006, HW-007 |
+| UART/SPI/I2C locais | Dentro da PCB ou ligações curtíssimas | §3.6, HW-007 |
+| MIPI CSI / LPDDR / eMMC / Ethernet | Carrier do GCV, impedância controlada | §3.7 |
+| Alimentação local | Reguladores a partir de 12/5/3,3 V + PMIC NXP no GCV/cluster | HW-005 |
 
 ---
 
-# 11. Interfaces dos Sensores
+# 6. Pontos em aberto
 
-Na arquitetura atual, os sensores são ligados diretamente ao Grupo Computacional ESP32-S.
-
-A interface de cada sensor deverá ser compatível com o elemento ESP32-S ao qual estiver associado.
-
-Poderão existir diferentes tipos de interface dentro do mesmo grupo.
-
-A especificação detalhada de cada sensor será definida em `SEN/`.
-
----
-
-# 12. Interfaces dos Atuadores
-
-Os atuadores utilizados durante a operação normal são controlados através do Grupo Computacional ESP32-A.
-
-As interfaces poderão variar de acordo com o tipo de atuador.
-
-O ESP32-A deverá gerar os sinais necessários à operação do atuador e, quando disponível, adquirir o respetivo *feedback*.
-
-A especificação detalhada dos atuadores será definida em `ACT/`.
+| # | Ponto em aberto | Resolução |
+| --- | --- | --- |
+| 1 | Pinagem definitiva do RJ45-RS por banda, proteções, comprimentos máximos, identificação de placa | Projeto detalhado COMM-RF + HW-006 |
+| 2 | Níveis lógicos, gamas ADC e frequências PWM por sensor/atuador concreto | SEN, ACT |
+| 3 | Empilhamento, larguras, espaçamentos e tolerâncias de impedância (CAN, MIPI, DDR, Ethernet, RJ45) | Guia NXP + fabricante de PCB |
+| 4 | Comprimento máximo do FFC MIPI e conetor exato da câmara | HW-007 + datasheet da câmara |
+| 5 | Estratégia de isolamento por interface (onde isolar e com que componente) | Análise de segurança + HW-008 |
+| 6 | Curvas de proteção (fusíveis, eFuses, TVS) por derivação | HW-005 + ensaio |
 
 ---
 
-# 13. Interface de Emergência
-
-O domínio ESP32-FS_A deverá possuir interfaces capazes de controlar o conjunto mínimo de atuadores definido para situações de FailSafe/FailSecure.
-
-Estas interfaces deverão permanecer suficientemente independentes das interfaces utilizadas pelo ESP32-A para permitir a execução da resposta de emergência.
-
-A arquitetura não determina ainda a implementação física concreta dessa independência.
-
-A solução poderá depender do tipo de atuador e da arquitetura elétrica final da aeronave.
-
----
-
-# 14. Isolamento Elétrico
-
-Quando necessário, deverão ser utilizados mecanismos de isolamento elétrico entre domínios.
-
-O isolamento poderá ser considerado para:
-
-* prevenção de propagação de falhas;
-* redução de interferências;
-* proteção de equipamentos;
-* separação de domínios de segurança;
-* proteção contra diferenças de potencial;
-* interfaces com equipamentos externos.
-
-A necessidade e o método de isolamento deverão ser definidos individualmente para cada interface.
-
----
-
-# 15. Proteção das Interfaces
-
-As interfaces deverão ser protegidas contra condições elétricas que possam exceder os limites dos equipamentos.
-
-Conforme aplicável, deverão ser considerados:
-
-* sobretensão;
-* sobrecorrente;
-* curto-circuito;
-* descargas;
-* inversão de polaridade;
-* transientes;
-* ruído;
-* interferência eletromagnética.
-
-Os mecanismos concretos de proteção serão definidos durante o projeto detalhado do hardware.
-
----
-
-# 16. Estado Seguro
-
-Cada interface cujo estado possa afetar a operação da aeronave deverá possuir um comportamento definido para condições anormais.
-
-Deverão ser considerados pelo menos:
-
-* arranque;
-* encerramento;
-* perda de comunicação;
-* falha do elemento controlador;
-* entrada em FailSafe/FailSecure;
-* reinicialização;
-* ausência de *feedback*.
-
-O estado seguro concreto dependerá da função da interface.
-
----
-
-# 17. Arranque
-
-Durante o arranque, as interfaces deverão assumir estados previamente definidos antes de qualquer módulo iniciar o controlo normal dos periféricos.
-
-O objetivo é evitar:
-
-* comandos espúrios;
-* ativação involuntária de atuadores;
-* estados indefinidos;
-* alterações inesperadas nos periféricos.
-
-A sequência temporal completa de arranque é definida em `SYS-009`.
-
----
-
-# 18. Encerramento
-
-Durante o encerramento, os sinais deverão ser colocados em estados apropriados antes da remoção da alimentação.
-
-Particular atenção deverá ser dada às interfaces associadas a:
-
-* motores;
-* superfícies de controlo;
-* atuadores;
-* sistemas de segurança;
-* periféricos externos.
-
-A sequência completa de encerramento será definida em `SYS-009`.
-
----
-
-# 19. Compatibilidade
-
-Nenhum periférico deverá ser diretamente ligado a uma interface do Aerus sem confirmação de compatibilidade elétrica.
-
-Deverão ser verificadas, conforme aplicável:
-
-* tensão;
-* corrente;
-* níveis lógicos;
-* tipo de sinal;
-* frequência;
-* polaridade;
-* impedância;
-* capacidade de entrada ou saída;
-* requisitos de isolamento.
-
-Quando as características não forem diretamente compatíveis deverá existir uma interface de adaptação apropriada.
-
----
-
-# 20. Separação entre Sinal e Alimentação
-
-Sempre que adequado, deverá ser distinguida a função de alimentação da função de sinal.
-
-Uma ligação de sinal não deverá ser utilizada para alimentar um periférico quando tal utilização não estiver explicitamente prevista.
-
-Da mesma forma, uma linha de alimentação não deverá ser considerada uma interface de comunicação ou controlo.
-
----
-
-# 21. Interferência
-
-A arquitetura elétrica deverá minimizar interferências entre:
-
-* sistemas computacionais;
-* sensores;
-* atuadores;
-* motores;
-* sistemas de potência;
-* linhas de comunicação.
-
-A distribuição física dos elementos e a organização da cablagem deverão ser consideradas conjuntamente com as interfaces elétricas.
-
----
-
-# 22. Identificação das Interfaces
-
-Cada interface física deverá possuir uma identificação inequívoca.
-
-A identificação deverá permitir determinar, conforme aplicável:
-
-* origem;
-* destino;
-* função;
-* tipo de sinal;
-* alimentação associada;
-* grupo computacional;
-* periférico associado.
-
-A nomenclatura concreta das interfaces será definida na documentação de hardware detalhada.
-
----
-
-# 23. Modularidade
-
-As interfaces deverão favorecer a substituição e expansão dos componentes.
-
-Sempre que possível, um periférico deverá poder ser substituído sem exigir alterações não relacionadas nos restantes sistemas.
-
-A modularidade deverá ser especialmente considerada para:
-
-* sensores;
-* atuadores;
-* elementos ESP32-S;
-* elementos ESP32-A;
-* periféricos opcionais;
-* implementos externos.
-
----
-
-# 24. Implementos
-
-Os implementos externos deverão possuir interfaces próprias adequadas à sua integração com o Aerus.
-
-A interface elétrica de um implemento deverá permitir a sua integração sem transformar o implemento num componente interno do Aerus.
-
-A arquitetura deverá permitir que diferentes implementos sejam instalados ou removidos de acordo com a configuração da aeronave.
-
-Os requisitos específicos de comunicação e integração dos implementos serão definidos posteriormente em `IMP/`.
-
----
-
-# 25. Configuração por Aeronave
-
-As interfaces elétricas efetivamente utilizadas poderão variar de acordo com o modelo da aeronave.
-
-A configuração deverá determinar:
-
-* interfaces existentes;
-* periféricos associados;
-* tipos de sinal;
-* parâmetros elétricos;
-* elementos computacionais envolvidos;
-* interfaces opcionais.
-
-O código e o hardware deverão utilizar apenas as interfaces previstas na configuração selecionada.
-
----
-
-# 26. Limites do Documento
-
-Este documento não define:
-
-* valores definitivos de tensão;
-* correntes máximas;
-* pinouts;
-* modelos específicos de microcontroladores;
-* modelos de sensores;
-* modelos de atuadores;
-* conectores específicos;
-* esquemas elétricos finais;
-* distribuição de alimentação;
-* topologia CAN;
-* protocolo TLV.
-
-Esses elementos serão definidos nas respetivas especificações.
-
----
-
-# 27. Referências
-
-- HW-001 — Arquitetura_de_Hardware
-- HW-002 — Grupos_Computacionais
-- HW-003 — Distribuicao_de_Hardware
-- HW-005 — Alimentacao_e_Distribuicao_de_Energia
-- HW-006 — Interfaces_de_Comunicacao
-- HW-007 — Interfaces_de_Perifericos
-- HW-008 — Redundancia_e_Isolamento_de_Hardware
-- HW-009 — Expansibilidade_e_Configuracao_de_Hardware
-- SEN — Especificações de Sensores
-- ACT — Especificações de Atuadores
-- COM — Especificações de Comunicações
-- SEC — Especificações de Segurança
-- IMP — Especificações de Implementos
+# 7. Referências
+
+* HW-001 — Arquitetura de Hardware
+* HW-002 — Grupos Computacionais
+* HW-003 — Distribuição de Hardware
+* HW-005 — Alimentação e Distribuição de Energia
+* HW-006 — Interfaces de Comunicação
+* HW-007 — Interfaces de Periféricos
+* HW-008 — Redundância e Isolamento de Hardware
+* HW-009 — Expansibilidade e Configuração de Hardware
+* docs/Esquemas/Arquitetura-Computacional.md

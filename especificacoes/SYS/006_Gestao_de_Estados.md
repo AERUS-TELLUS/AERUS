@@ -1,10 +1,10 @@
-# SYS-006 — Gestao_de_Estados
+# SYS-006 — Gestão de Estados
 
 | Campo             | Valor                    |
 |-------------------|--------------------------|
 | **Código**        | SYS-006                  |
 | **Título**        | Gestão de Estados        |
-| **Versão**        | 1.0                      |
+| **Versão**        | 2.0                      |
 | **Estado**        | Em Desenvolvimento       |
 | **Autor**         | ShegaPT                  |
 | **Classificação** | Especificação de Sistema |
@@ -13,209 +13,128 @@
 
 # 1. Objetivo
 
-O presente documento define a arquitetura geral de gestão de estados do sistema Aerus.
+O presente documento define a arquitetura geral de gestão de estados do sistema AERUS. Estabelecem-se os princípios relativos à criação, alteração, propagação e utilização dos estados internos dos grupos computacionais, do Master Geral e do Grupo de Visão, com garantia de coerência, previsibilidade e segurança.
 
-São estabelecidos os princípios relativos à criação, alteração, propagação e utilização dos estados internos dos diferentes grupos computacionais, garantindo coerência, previsibilidade e segurança durante todo o funcionamento do sistema.
-
-Este documento não define os estados específicos de cada domínio funcional, os quais são descritos nas respetivas especificações técnicas.
+Não se definem os estados específicos de cada domínio funcional; tais estados constam das respetivas especificações técnicas (SW, SEC, OPS, SEN, ACT, NAV, CTL).
 
 ---
 
-# 2. Princípios Gerais
+# 2. Âmbito
 
-A gestão de estados do Aerus baseia-se nos seguintes princípios:
-
-- propriedade dos estados;
-- consistência global;
-- previsibilidade;
-- rastreabilidade;
-- isolamento entre domínios;
-- validação antes da transição;
-- sincronização entre grupos computacionais;
-- prioridade da segurança.
-
-Os estados representam a condição operacional de um determinado elemento do sistema num dado instante.
+Aplica-se a todos os proprietários de estado: Módulos Menores RP2040, Masters RP2350, os 8 núcleos do Master Geral, o Router do GCV e o Grupo de Comunicação, bem como às redes que transportam estados (CAN-Intra, CAN-Principal, CAN-FailSafe, FABRIC).
 
 ---
 
-# 3. Propriedade dos Estados
+# 3. Descrição Detalhada
 
-Cada grupo computacional é proprietário dos seus próprios estados internos.
+## 3.1. Princípios gerais
 
-Apenas o próprio grupo computacional pode criar, modificar ou eliminar os seus estados internos.
+- **Propriedade**: cada grupo/núcleo é proprietário exclusivo dos seus estados internos; só o proprietário cria, modifica ou elimina.
+- Consistência global e previsibilidade: transições determinísticas (origem, condição, destino), sem alterações arbitrárias.
+- Rastreabilidade: toda a transição relevante é registada com timestamp para diagnóstico e auditoria.
+- Isolamento: declarações externas sobre outro grupo não alteram o seu estado interno.
+- Validação antes da transição e sincronização entre grupos via redes normativas.
+- Prioridade da segurança: estados de segurança prevalecem sobre estados operacionais.
 
-Nenhum outro grupo computacional poderá alterar diretamente esses estados.
+## 3.2. Categorias de estados
 
-Esta regra garante a integridade funcional e evita inconsistências provocadas por alterações externas.
+- **Estados Internos**: condição interna de funcionamento (ex.: modo do driver, fase de filtro, estado do codificador). Utilização exclusiva do proprietário.
+- **Estados Operacionais**: condição observável por outros (disponibilidade, indisponibilidade, perda de comunicação, normal, degradado). Critérios definidos pela arquitetura.
+- **Estados de Segurança**: proteção (FailSafe, FailSecure, inibição, recuperação, emergência). Gestão associada ao FailSafe/Supervisão e transporte prioritário na CAN-FailSafe.
 
----
+## 3.3. Propriedade por grupo (normativa)
 
-# 4. Categorias de Estados
+| Proprietário | Estados próprios |
+|--------------|------------------|
+| Grupo Sensorial (Master + Menores) | Aquisição, validade por sensor, saúde de barramento intra |
+| Grupo Atuador | Validação de comando, envelope, saúde por atuador |
+| Núcleos Voo/Fusão/Navegação/Cálculo/Missão/Planeamento | Estado de cada serviço no cluster |
+| Supervisão/Diagnóstico (MG) | Saúde do cluster, heartbeats, latências, integridade IPC |
+| GCV (SoC + Router) | Captura, ISP, codec, temperatura, armazenamento, ligação RF |
+| Comunicação | Ligação RF, filas, integridade de telecomando/telemetria |
+| FailSafe | Estados de segurança globais e inibições |
 
-A arquitetura distingue três categorias fundamentais de estados.
+Exemplo de regra: o Router do GCV é proprietário do estado `VISAO_SAUDE`; o Master Geral apenas o subscreve e declara, quando aplicável, `VISAO_OPERACIONAL=DEGRADADO` como avaliação externa, sem alteração do estado interno do GCV.
 
-## Estados Internos
+## 3.4. Supervisão externa (avaliação, não alteração)
 
-Representam a condição interna de funcionamento de cada grupo computacional.
+Determinados grupos podem declarar estados operacionais relativos a outros, quando as regras o permitam. Tais declarações constituem avaliação externa e nunca alteram o estado interno do observado.
 
-São utilizados exclusivamente pelo respetivo grupo durante o processamento local.
+- **Master Geral (função Missão/Voo)**: monitoriza Sensorial e Atuador via CAN-Principal; em ausência de comunicação no intervalo definido, declara estados como `SEM_COMUNICACAO` ou `INDISPONIVEL`.
+- **Supervisão do cluster**: monitoriza os 8 núcleos via HEARTBEAT/HALTH na FABRIC (latência, erros, bloqueio, CRC). Pode declarar perda de nó e impor degradação.
+- **FailSafe**: monitoriza todos (Masters, MG, GCV via Router, Comunicação). Pode declarar estados operacionais e de segurança e determinar FailSafe/FailSecure. As ordens críticas circulam na CAN-FailSafe.
 
-Apenas o proprietário pode alterá-los.
+## 3.5. Transições, sincronização e persistência
 
----
+Toda a transição possui origem, condição e destino; sempre que necessário, utilizam-se estados intermédios para evolução controlada.
 
-## Estados Operacionais
+A sincronização processa-se pelos mecanismos COM/SEC (HEALTH_STATUS, SYSTEM_STATUS, TIME_SYNC, FAULT). Perante divergência entre observadores, aplica-se a regra COM/SEC (prevalência do FailSafe em matéria de segurança; prevalência do proprietário em matéria interna; marcação temporal como desempate técnico).
 
-Representam a condição operacional observável por outros grupos computacionais.
+Os estados representam a condição atual; o histórico é objeto de registo (log) independente para diagnóstico, auditoria e análise, sem confusão com a gestão propriamente dita.
 
-Estes estados podem ser utilizados para indicar, entre outros:
+## 3.6. Deteção de falha de 1x RP2350 (regra explícita)
 
-- disponibilidade;
-- indisponibilidade;
-- perda de comunicação;
-- funcionamento normal;
-- funcionamento degradado.
+Perante falta de HEARTBEAT, watchdog expirado, latência excessiva, CRC inválido ou dados incoerentes num RP2350 do cluster, a Supervisão: identifica o nó, determina serviços perdidos (ex.: Missão+Planeamento), impõe estado predefinido (ex.: `MISSÃO_INDISPONIVEL`, `MODO_SEGURO`), mantém funções críticas possíveis, regista FAULT com timestamp e informa restantes grupos via CAN-Principal e, se crítico, via CAN-FailSafe. A recuperação automática depende da classe de falha (ver SEC).
 
-Os critérios para determinação destes estados são definidos pela arquitetura do sistema.
+## 3.7. Escalabilidade
 
----
-
-## Estados de Segurança
-
-Representam estados relacionados com mecanismos de proteção da aeronave.
-
-Incluem estados associados a:
-
-- FailSafe;
-- FailSecure;
-- inibição;
-- recuperação;
-- procedimentos de emergência.
-
-A gestão destes estados encontra-se associada ao Grupo Computacional ESP32-FS.
-
----
-
-# 5. Alteração de Estados
-
-Qualquer alteração de estado deverá respeitar as regras definidas para esse elemento.
-
-Uma transição de estado deverá ocorrer apenas quando:
-
-- existam condições válidas;
-- tenham sido verificadas as respetivas regras;
-- seja garantida a coerência da transição.
-
-Não deverão existir alterações arbitrárias de estados.
+Admite-se adição futura de grupos, estados, categorias e regras, sem compromisso dos princípios. Novos estados são documentados com proprietário, categoria, condições e rede de publicação.
 
 ---
 
-# 6. Estados dos Grupos Computacionais
+# 4. Exemplos
 
-Cada grupo computacional mantém autonomamente o seu estado interno.
+## Exemplo 1 — Propriedade respeitada
 
-Esta responsabilidade encontra-se distribuída da seguinte forma:
+```text
+Master Sensorial: ESTADO_INTERNO=AMOSTRAGEM_OK (proprietário: Sensorial)
+MG declara: SENSORIAL_OPERACIONAL=NORMAL (avaliação externa)
+→ o registo interno do Sensorial permanece inalterado.
+```
 
-- ESP32-S gere exclusivamente os seus estados internos;
-- ESP32-A gere exclusivamente os seus estados internos;
-- RaspberryPi gere exclusivamente os seus estados internos;
-- ESP32-FS gere exclusivamente os seus estados internos;
-- ESP32-FS_A gere exclusivamente os seus estados internos.
+## Exemplo 2 — Perda de comunicação
 
----
+```text
+Sem quadros do Atuador na CAN-Principal durante T_limite:
+  MG declara ATUADOR_OPERACIONAL=SEM_COMUNICACAO;
+  FailSafe avalia e, se crítico, declara ATUADOR_SEGURANCA=INIBIDO
+  via CAN-FailSafe + SYSTEM_STATUS.
+```
 
-# 7. Supervisão Externa
+## Exemplo 3 — Falha no cluster
 
-Embora cada grupo seja responsável pelos seus estados internos, determinados grupos computacionais podem declarar estados operacionais relativos a outros grupos, desde que tal seja permitido pelas regras da arquitetura.
+```text
+RP2350 #3 sem HEARTBEAT há 3 janelas:
+  Supervisão declara NO cluster: RP2350_3=EM_FALHA,
+  MISSÃO=INDISPONIVEL, VOO=MANTIDO, modo global=SEGURO;
+  Diagnóstico regista FAULT {nó, serviços, t, contadores}.
+```
 
-Estas declarações não alteram os estados internos do grupo observado.
+## Exemplo 4 — Tabela de estados (extrato)
 
-Constituem apenas uma avaliação externa do seu estado operacional.
-
----
-
-# 8. Supervisão do RaspberryPi
-
-O Grupo Computacional RaspberryPi monitoriza continuamente os Grupos Computacionais ESP32-S e ESP32-A.
-
-Na ausência de comunicação durante o intervalo temporal definido para cada grupo, o RaspberryPi poderá declarar estados operacionais previamente definidos, como por exemplo:
-
-- ON;
-- OFF;
-- outros estados previstos pela arquitetura.
-
-Esta declaração não altera o estado interno do grupo computacional monitorizado.
-
----
-
-# 9. Supervisão do ESP32-FS
-
-O Grupo Computacional ESP32-FS monitoriza continuamente:
-
-- RaspberryPi;
-- ESP32-S;
-- ESP32-A;
-- ESP32-FS_A.
-
-Sempre que as regras de segurança assim o determinem, poderá declarar estados operacionais ou estados de segurança relativos aos restantes grupos computacionais.
-
-O Grupo Computacional ESP32-FS possui igualmente autoridade para determinar a ativação dos mecanismos de FailSafe e FailSecure.
+| Estado | Categoria | Proprietário | Rede de publicação |
+|--------|-----------|--------------|--------------------|
+| AMOSTRAGEM_OK | Interno | Sensorial | Intra + resumo na Principal |
+| ATUADOR=NORMAL | Operacional | Atuador | Principal |
+| FAILSAFE_ATIVO | Segurança | FailSafe | FailSafe + Principal (resumo) |
+| VISAO_SAUDE=OK | Interno/Oper. | Router GCV | Principal |
 
 ---
 
-# 10. Transições de Estado
+# 5. Interfaces Com Outros Documentos
 
-Todas as transições de estado deverão ser determinísticas.
-
-Uma transição deverá possuir:
-
-- estado de origem;
-- condição de transição;
-- estado de destino.
-
-Sempre que necessário, poderão existir estados intermédios destinados a garantir uma evolução controlada entre diferentes condições operacionais.
+| Documento | Relação |
+|-----------|---------|
+| SYS-002 | Grupos e autoridade que sustentam a propriedade |
+| SYS-005 | Redes que transportam estados |
+| SYS-007/008 | Modos e tempos que condicionam transições |
+| COM / SEC / SW | Mecanismos, políticas de falha e políticas por módulo |
+| SEN/ACT/NAV/CTL | Estados específicos de cada domínio |
 
 ---
 
-# 11. Sincronização
+# 6. Estado / Pontos Em Aberto
 
-Os diferentes grupos computacionais deverão manter informação consistente relativamente aos estados operacionais do sistema.
+- **Estado**: Em Desenvolvimento.
+- **Pontos em aberto**: catálogo de estados por grupo; intervalos de declaração de perda; formato SYSTEM_STATUS/HEALTH_STATUS/FAULT; política de desempate em divergência; retenção de logs e relação com certificação.
 
-A sincronização de estados deverá ocorrer através dos mecanismos de comunicação definidos pela arquitetura.
-
-Sempre que existam divergências entre estados observados por diferentes grupos computacionais, estas deverão ser resolvidas de acordo com as regras estabelecidas nas especificações da área COM e SEC.
-
----
-
-# 12. Persistência
-
-Os estados representam exclusivamente a condição atual do sistema.
-
-Sempre que necessário, poderão existir mecanismos de registo histórico para efeitos de diagnóstico, auditoria ou análise posterior.
-
-A persistência destes registos é independente da gestão dos estados propriamente dita.
-
----
-
-# 13. Escalabilidade
-
-A arquitetura de gestão de estados deverá permitir a introdução futura de:
-
-- novos grupos computacionais;
-- novos estados;
-- novas categorias de estados;
-- novas regras de transição.
-
-Estas evoluções não deverão comprometer os princípios definidos na presente especificação.
-
----
-
-# 14. Referências
-
-- SYS-002 — Arquitetura Computacional
-- SYS-003 — Arquitetura Software
-- SYS-005 — Fluxo Global de Informação
-- SYS-007 — Modos de Funcionamento
-- COM — Especificações de Comunicações
-- SEC — Especificações de Segurança
-- SW — Especificações de Software

@@ -1,376 +1,303 @@
 # COM-001 — Arquitetura de Comunicação
 
-| Campo             | Valor                              |
-| ----------------- | ---------------------------------- |
-| **Código**        | COM-001                            |
-| **Título**        | Arquitetura de Comunicação         |
-| **Versão**        | 1.0                                |
-| **Estado**        | Em Desenvolvimento                 |
-| **Autor**         | ShegaPT                            |
-| **Classificação** | Especificação de Comunicação       |
+| Campo | Valor |
+|---|---|
+| **Código** | COM-001 |
+| **Título** | Arquitetura de Comunicação |
+| **Versão** | 2.0 |
+| **Estado** | Aprovado para implementação |
+| **Autor** | ShegaPT |
+| **Classificação** | Especificação de Comunicação |
 
 ---
 
-# 1. Objetivo
+# 1. Objectivo
 
-O presente documento define a arquitetura geral de comunicação do sistema Aerus, estabelecendo as camadas, princípios, meios de transporte e protocolos utilizados para a troca de informação entre os diferentes Grupos Computacionais.
+O presente documento define a arquitetura geral de comunicação do sistema AERUS-TELLUS. Estabelece as cinco redes obrigatórias, a separação rigorosa entre domínio interno (embarcado) e domínio externo (ligações por radiofrequência), os princípios de encaminhamento e as garantias de determinismo, segurança e segregação.
 
-A arquitetura de comunicação do Aerus é composta por três camadas independentes e complementares, cada uma com uma responsabilidade específica. A separação entre camadas permite alterar o meio de transporte sem afetar o protocolo de mensagens, e vice-versa.
+Esta especificação substitui integralmente qualquer descrição anterior baseada noutras plataformas. Qualquer menção a Raspberry Pi, ESP32, RPi ou FS_A como entidades activas encontra-se revogada. Admite-se apenas uma nota histórica de migração (§16).
 
 ---
 
 # 2. Princípios
 
-A arquitetura de comunicação do Aerus baseia-se nos seguintes princípios:
-
-* separação em camadas (física, transporte, aplicação);
-* independência do meio de transporte;
-* protocolo de mensagens autónomo e completo (TLV);
-* segurança por diseño (CRC, HMAC, anti-replay);
-* determinismo (sem alocações dinâmicas);
-* extensibilidade (novos IDs sem alterar a estrutura);
-* separação entre comunicação inter-grupos e comunicação local com periféricos;
-* dois buses independentes (operacional e segurança);
-* escalabilidade (adicionar grupos sem alterar o protocolo).
+* Cinco redes obrigatórias, sem excepções nem fusões implícitas.
+* Separação física e lógica entre comunicação interna (embarcada) e comunicação externa (RF via RJ45-Privada RS).
+* Protocolo TLV confinado ao CAN; o FABRIC e a RJ45-Privada RS possuem enquadramentos próprios (ver COM-002, Anexos A e B).
+* Determinismo integral: memória estática, filas limitadas, latências majoradas.
+* Segregação de segurança: a rede de emergência não partilha barramento com tráfego ordinário.
+* Vídeo pesado jamais circula em CAN+TLV; circula exclusivamente no segmento RF de 5,8 GHz.
+* Nomenclatura canónica de Grupos Computacionais (§3); proibição de entidades legadas como actores.
 
 ---
 
-# 3. Visão Geral das Camadas
+# 3. Nomenclatura canónica
 
-A comunicação entre Grupos Computacionais é composta por três camadas:
+| Abreviatura | Designação completa | Papel |
+|---|---|---|
+| G-SEN | Grupo Computacional Sensorial | Aquisição e pré-processamento sensorial |
+| G-ACT | Grupo Computacional Atuador | Accionamento de actuadores nominais |
+| G-CTV | Grupo Computacional Controlo de Voo | Leis de controlo e estabilização |
+| G-NAV | Grupo Computacional Navegação | Estimação de posição, velocidade e atitude |
+| G-MIS | Grupo Computacional Missão | Planeamento e gestão de missão |
+| G-CAL | Grupo Computacional Cálculo | Cálculo intensivo auxiliar |
+| G-FS | Grupo Computacional FailSafe / Supervisão | Supervisão, protecção e emergência |
+| G-VIS | Grupo Computacional Visão (GCV) | Visão por computador, placa de vídeo |
+| G-COM | Grupo Computacional Comunicação | Gestão de enlaces RF de comando/telemetria |
+| MG | Master Geral (cluster 4×RP2350, 8 núcleos) | Orquestração central, fusão e decisão |
+| AE | Atuação de Emergência (subsistema, não grupo) | Actuadores de último recurso comandados pelo G-FS |
 
-```text
-┌─────────────────────────────────────────────────────────┐
-│                    CAMADA DE APLICAÇÃO                  │
-│                                                         │
-│              Protocolo TLV (Type-Length-Value)          │
-│                                                         │
-│  START │ MSG_ID │ COUNT │ FIELDS[ID+LEN+N] │ CRC8 │ ... │
-│                                                         │
-│  Responsável: significado, integridade, autenticação    │
-└──────────────────────────┬──────────────────────────────┘
-                           │
-                           │ payload serializado
-                           ▼
-┌─────────────────────────────────────────────────────────────┐
-│                    CAMADA DE TRANSPORTE                     │
-│                                                             │
-│                    CAN FD (29-bit ID)                       │
-│                                                             │
-│  CAN_ID[origem + destino + tipo + prioridade] │ Payload     │
-│                                                             │
-│  Responsável: roteamento, prioridade, arbiter, fragmentação │
-└──────────────────────────┬──────────────────────────────────┘
-                           │
-                           │ frame CAN FD
-                           ▼
-┌─────────────────────────────────────────────────────────┐
-│                    CAMADA FÍSICA                        │
-│                                                         │
-│              CAN FD (twisted pair + terminated)         │
-│                                                         │
-│  Responsável: sinal elétrico, Born-off, isolamento      │
-└─────────────────────────────────────────────────────────┘
+Cada Grupo Computacional possui um elemento designado **Master de Grupo**, que é o único ponto de presença desse grupo na CAN-Principal. O MG é o orquestrador do sistema. O Router GCV é a função de encaminhamento sedeada no G-VIS que liga a CAN-Principal à RJ45-Privada RS do segmento de vídeo.
+
+---
+
+# 4. As cinco redes (visão obrigatória)
+
 ```
-
----
-
-# 4. Camada de Aplicação — Protocolo TLV
-
-O protocolo TLV (Type-Length-Value) constitui a camada de aplicação de todas as mensagens trocadas entre Grupos Computacionais.
-
-## 4.1 Características
-
-* protocolo completo e autónomo;
-* estrutura fixa: START(0xAA) + MSG_ID + TLV_COUNT + TLV_FIELDS + CRC8;
-* HMAC (32 bytes) e SEQ (4 bytes) acrescentados pelo módulo Security após serialização;
-* CRC8 SMBUS (polinómio 0x07) para detecção de erros na camada de aplicação;
-* little-endian para serialização numérica;
-* até 32 campos TLV por mensagem;
-* payload máximo de 32 bytes por campo (ou 128 bytes para vídeo);
-* parser FSM com timeout, overflow protection e reset automático.
-
-## 4.2 Independência do Meio
-
-O TLV é transportado por qualquer meio serial confiável:
-
-* CAN FD (comunicação inter-grupos);
-* UART (comunicação local com periféricos);
-* SPI (sensores de alta velocidade);
-* I2C (sensores de baixa velocidade);
-* LoRa (comunicação externa — futuro).
-
-O TLV não contém informação sobre o meio de transporte. A camada de transporte é transparente para a camada de aplicação.
-
-## 4.3 Referência
-
-A definição completa do protocolo TLV encontra-se em `shared/TLV_DEFINITIONS`.
-
----
-
-# 5. Camada de Transporte — CAN FD
-
-O CAN FD (Controller Area Network with Flexible Data-rate) constitui a camada de transporte para comunicação entre Grupos Computacionais.
-
-## 5.1 Características
-
-* payload até 64 bytes (vs 8 bytes CAN clássico);
-* bitrate de arbitragem e de dados configurável separadamente;
-* CRC nativo de 17-bit para proteção física;
-* arbiter automático baseado em prioridade (ID mais baixo = prioridade mais alta);
-* Born-off e auto-recovery integrados;
-* suporte para 29-bit ID extendido.
-
-## 5.2 CAN ID
-
-O CAN ID de 29 bits transporta informação de roteamento:
-
-```text
-┌────────────────────────────────────────────────────────────┐
-│  CAN ID Extended (29 bits)                                 │
-│                                                            │
-│  PRIORIDADE │ GRUPO_ORIGEM │ GRUPO_DESTINO │ TIPO_MSG      │
-│   (3 bit)   │   (4 bit)    │    (4 bit)    │  (4 bit)      │
-└────────────────────────────────────────────────────────────┘
-```
-
-## 5.3 Referência
-
-A definição completa dos CAN IDs encontra-se em `shared/CAN_IDS`.
-
----
-
-# 6. Camada Física — CAN FD
-
-## 6.1 Topologia
-
-A comunicação CAN FD do Aerus utiliza uma topologia partilhada (bus) com dois buses independentes:
-
-```text
-BUS OPERACIONAL:
-┌──────────────────────────────────────────────────────────────────┐
-│  ESP32-S_01   ESP32-S_02   RaspberryPi   ESP32-A   ESP32-FS      │
-│  CAN_ID:0x11  CAN_ID:0x12  CAN_ID:0x01  CAN_ID:0x21 CAN_ID:0x31  │
-└──────────────────────────────────────────────────────────────────┘
-
-BUS SEGURANÇA:
-┌──────────────────────────────────────────────────────────────────┐
-│  ESP32-FS    ESP32-FS_A                                          │
-│  CAN_ID:0x31  CAN_ID:0x41                                        │
-└──────────────────────────────────────────────────────────────────┘
-```
-
-O ESP32-FS está conectado a ambos os buses, funcionando como ponte entre o domínio operacional e o domínio de segurança.
-
-## 6.2 Bitrate
-
-O bitrate é variável e depende do tipo de dado:
-
-| Tipo de Dado           | Bitrate (Dados) | Bitrate (Arbitragem) |
-|------------------------|-----------------|----------------------|
-| Telemetria sensores    | 2 Mbps          | 500 kbps             |
-| Comandos de controlo   | 2 Mbps          | 500 kbps             |
-| Heartbeat / estados    | 500 kbps        | 500 kbps             |
-| Segurança / emergência | 5 Mbps          | 1 Mbps               |
-| Vídeo                  | 5 Mbps          | 1 Mbps               |
-
-## 6.3 Referência
-
-A definição completa do CAN Bus encontra-se em `COM-008`.
-
----
-
-# 7. Comunicação Local com Periféricos
-
-A comunicação entre controladores e periféricos (sensores e atuadores) não utiliza CAN bus, mas sim interfaces seriais dedicadas:
-
-```text
-ESP32-S    ←─UART/SPI/I2C─→ Sensores
-ESP32-A    ←─UART/SPI/I2C─→ Atuadores
-ESP32-FS   ←─UART/SPI/I2C─→ Sensores supercríticos
-ESP32-FS_A ←─UART/SPI/I2C─→ Atuadores emergência
-```
-
-Estas interfaces estão documentadas em `HW-006` e `HW-004`.
-
----
-
-# 8. Separção entre Comunicação Inter-Grupos e Local
-
-```text
-┌──────────────────────────────────────────────────────────────────┐
-│                     AERUS - VISÃO DE COMUNICAÇÃO                 │
-│                                                                  │
-│  ┌────────────────────────────────────────────────────────────┐  │
-│  │              COMUNICAÇÃO LOCAL (periféricos)               │  │
-│  │                                                            │  │
-│  │  ESP32-S ←─UART/SPI/I2C─→ Sensores                         │  │
-│  │  ESP32-A ←─UART/SPI/I2C─→ Atuadores                        │  │
-│  │  ESP32-FS ←─UART/SPI/I2C─→ Sensores supercríticos          │  │
-│  │  ESP32-FS_A ←─UART/SPI/I2C─→ Atuadores emergência          │  │
-│  └────────────────────────────────────────────────────────────┘  │
-│                                                                  │
-│  ┌────────────────────────────────────────────────────────────┐  │
-│  │         COMUNICAÇÃO INTER-GRUPOS (CAN bus)                 │  │
-│  │                                                            │  │
-│  │  ┌──────────────────────────────────────────────────────┐  │  │
-│  │  │          BUS OPERACIONAL (partilhado)                │  │  │
-│  │  │  ESP32-S ←→ RaspberryPi ←→ ESP32-A ←→ ESP32-FS       │  │  │
-│  │  └──────────────────────────────────────────────────────┘  │  │
-│  │                                                            │  │
-│  │  ┌──────────────────────────────────────────────────────┐  │  │
-│  │  │          BUS SEGURANÇA (dedicado)                    │  │  │
-│  │  │  ESP32-FS ←→ ESP32-FS_A                              │  │  │
-│  │  └──────────────────────────────────────────────────────┘  │  │
-│  │                                                            │  │
-│  │  ESP32-FS conectado a AMBOS os buses                       │  │
-│  └────────────────────────────────────────────────────────────┘  │
-└──────────────────────────────────────────────────────────────────┘
-```
-
----
-
-# 9. Segurança Multi-Camada
-
-A arquitetura de comunicação possui cinco camadas de proteção:
-
-| Camada | Mecanismo                  | Protege contra                                  |
-|--------|----------------------------|-------------------------------------------------|
-| 1      | CRC nativo CAN FD (17-bit) | Erros de transmissão no canal físico            |
-| 2      | CRC8 TLV (SMBUS 0x07)      | Corrupção na camada de aplicação                |
-| 3      | HMAC TLV (32 bytes)        | Mensagens falsificadas (requer módulo Security) |
-| 4      | CAN ID + assinatura        | Identificação e autenticação no transporte      |
-| 5      | SEQ TLV (4 bytes)          | Reenvio de mensagens capturadas (anti-replay)   |
-
----
-
-# 10. Prioridade
-
-A prioridade das mensagens é determinada por dois mecanismos complementares:
-
-1. **CAN ID (arbiter nativo):** O bit de prioridade no CAN ID determina quem transmite quando vários nodos competem pelo bus. ID mais baixo = prioridade mais alta.
-2. **TLV MSG_ID (lógica de aplicação):** O tipo de mensagem determina a prioridade de processamento e descarte no receptor.
-
-| Prioridade     | CAN ID Bits | TLV MSG_ID(s)                             | Comportamento             |
-|----------------|-------------|-------------------------------------------|---------------------------|
-| SUPER_CRITICAL | 0           | MSG_FAILSAFE, MSG_SAFETY_DATA             | Nunca descartado          |
-| CRITICAL       | 1           | MSG_COMMAND                               | Sempre transmitido        |
-| HIGH           | 2           | MSG_TELEMETRY, MSG_HEARTBEAT, MSG_SI_DATA | Prioridade alta           |
-| MEDIUM         | 3           | MSG_VIDEO, MSG_ACK                        | Prioridade normal         |
-| LOW            | 4           | MSG_SHELL_CMD                             | Pode ser atrasado         |
-| SUPER_LOW      | 5           | MSG_DEBUG                                 | Descartável se necessário |
-
----
-
-# 11. Fragmentação
-
-Mensagens TLV que excedam o payload máximo de um frame CAN FD (64 bytes) são fragmentadas em múltiplos frames.
-
-```text
-Mensagem TLV grande:
 ┌─────────────────────────────────────────────────────────────────┐
-│ START │ MSG_ID │ COUNT │ FIELD1 │ FIELD2 │ ... │ FIELD_N │ CRC8 │
-└───────┴────────┴───────┴────────┴────────┴─────┴─────────┴──────┘
-                           │
-                           │ fragmentação
+│                    AERUS — MODELO DE 5 REDES                    │
+│                                                                 │
+│  (1) CAN-Intra-Grupo × N                                        │
+│      Um barramento dedicado POR Grupo Computacional.            │
+│      Ex.: CAN-SEN, CAN-ACT, CAN-CTV, CAN-NAV, CAN-MIS,          │
+│           CAN-CAL, CAN-FS, CAN-VIS, CAN-COM.                    │
+│                                                                 │
+│  (2) CAN-Principal (inter-masters)                              │
+│      Masters de cada Grupo + Master Geral + Router GCV.         │
+│                                                                 │
+│  (3) CAN-FailSafe dedicada                                      │
+│      G-FS ←→ Atuação de Emergência. SUPER_CRITICAL.             │
+│      Sem descarte. Barramento fisicamente independente.         │
+│                                                                 │
+│  (4) INTERCONNECT FABRIC intra-cluster (dentro do MG)           │
+│      4×RP2350, 8 núcleos. IPC determinístico de baixa latência. │
+│                                                                 │
+│  (5) RJ45-Privada RS (série, tipo RS-422/485 a confirmar)       │
+│      Só existe onde houver RF:                                  │
+│        a) GCV ←→ placa TX 5,8 GHz (vídeo 720p30);               │
+│        b) MG  ←→ módulo RX 2,4 GHz + TX 868 MHz                 │
+│           (comando/telemetria).                                 │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+| # | Rede | Meio | Participantes | Carga típica |
+|---|---|---|---|---|
+| 1 | CAN-Intra-Grupo | CAN-FD até 64 B | Elementos internos de cada grupo | TLV local (telemetria, comando local, estado) |
+| 2 | CAN-Principal | CAN-FD até 64 B | Masters G-SEN/G-ACT/G-CTV/G-NAV/G-MIS/G-CAL/G-FS/G-VIS/G-COM + MG + Router GCV | TLV inter-masters (navegação, missão, saúde, sincronização) |
+| 3 | CAN-FailSafe | CAN-FD até 64 B, dedicada | G-FS ←→ AE | Comandos de emergência, confirmações, heartbeat de segurança |
+| 4 | FABRIC | SPI/DMA/PIO/shmem (a definir, ver COM-003) | 8 núcleos do MG | Quadros IPC (SENSOR_DATA, MATH_REQUEST, RESPONSE, NAVIGATION_, MISSION_, HEALTH_STATUS, SYSTEM_STATUS, TIME_SYNC, FAULT, HEARTBEAT), RPC entre núcleos |
+| 5 | RJ45-Privada RS | Série ponto-a-ponto sobre RJ45 privada | GCV←→TX 5,8 GHz; MG←→RX 2,4 GHz+TX 868 MHz | Vídeo 720p30 (só 5,8 GHz); comando/telemetria série (só 2,4 GHz/868 MHz) |
+
+Regra de ouro: **CAN+TLV nunca transporta vídeo pesado.** O CAN transporta, quando muito, descritores ou estado de vídeo (ex.: «stream activo/inactivo», «modo 720p30»), nunca fotogramas.
+
+---
+
+# 5. Diagrama geral das cinco redes
+
+```
+  ┌────────┐ ┌────────┐ ┌────────┐ ┌────────┐ ┌────────┐
+  │ G-SEN  │ │ G-ACT  │ │ G-CTV  │ │ G-NAV  │ │ G-MIS  │
+  │CAN-SEN │ │CAN-ACT │ │CAN-CTV │ │CAN-NAV │ │CAN-MIS │
+  │interno │ │interno │ │interno │ │interno │ │interno │
+  └───M────┘ └───M────┘ └───M────┘ └───M────┘ └───M────┘
+       │          │          │          │          │
+       └──────────┴─────┬────┴──────────┴──────────┘
+                        │
+  ┌────────┐      ┌─────┴──────────────────┐      ┌────────┐
+  │ G-CAL  │      │    (2) CAN-PRINCIPAL   │      │  G-COM │
+  │CAN-CAL │──M───┤  inter-masters         ├──M───│CAN-COM │
+  └────────┘      │  + MG + Router GCV     │      └────────┘
+                  └─────┬──────────┬───────┘
+                        │          │
+                 ┌──────┘          └──────┐
+                 │  ┌──────────────┐     │
+                 │  │ MG 4×RP2350  │     │  ┌────────┐
+                 │  │ (4) FABRIC   │     │  │ G-VIS  │
+                 │  │ 8 núcleos    │     └──┤ Router │
+                 │  └──────┬───────┘        │  GCV   │
+                 │         │                └───┬────┘
+                 │         │ (5) RJ45-RS         │ (5) RJ45-RS
+                 │         │ MG←→RX2,4+TX868     │ GCV←→TX5,8
+                 │         ▼                     ▼
+                 │   ┌───────────┐         ┌───────────┐
+                 │   │ RF 2,4/868│         │ RF 5,8GHz │
+                 │   │cmd/telem. │         │ vídeo     │
+                 │   └───────────┘         │ 720p30    │
+                 │                         └───────────┘
+                 │
+                 │  ┌──────────────────────┐
+                 └──┤ G-FS                 │
+                    │ CAN-FS interno (1)   │
+                    └──────┬───────────────┘
+                           │ (3) CAN-FAILSAFE dedicada
                            ▼
-Frame CAN FD #1:  [Frag0/3] [START+MSG_ID+COUNT+CRC8+FIELD1] (≤64 bytes)
-Frame CAN FD #2:  [Frag1/3] [FIELD2+FIELD3+FIELD4]           (≤64 bytes)
-Frame CAN FD #3:  [Frag2/3] [FIELD5+FIELD6+FIELD_N+CRC8]     (≤64 bytes)
+                    ┌──────────────┐
+                    │ AE — Atuação │
+                    │ de Emergência│
+                    └──────────────┘
+  Legenda: M = Master de Grupo (única presença na CAN-Principal).
 ```
 
 ---
 
-# 12. Gestão de Comunicações
+# 6. Separação interno versus externo
 
-A comunicação entre módulos e entre domínios computacionais é efetuada através de um gestor de comunicações dedicado, conforme definido em `SYS-003` §13.
+| Domínio | Redes | Fronteira | Regra |
+|---|---|---|---|
+| Interno (embarcado) | (1) CAN-Intra-Grupo, (2) CAN-Principal, (3) CAN-FailSafe, (4) FABRIC | Placa / chicote interno | Todo o tráfego crítico de voo permanece a bordo; nenhuma decisão de estabilização depende de RF |
+| Externo (RF) | (5) RJ45-Privada RS + enlaces RF | Conector RJ45 privada + módulos RF | A RJ45-Privada RS é o único acoplamento entre o sistema embarcado e o mundo RF; o Router CAN↔RJ45 (COM-003) é o único que atravessa a fronteira |
 
-O gestor é responsável por:
+```
+┌─────────────────── INTERNO ───────────────────┐   ┌──── EXTERNO ────┐
+│ CAN-Intra × N │ CAN-Principal │ CAN-FailSafe    │   │                │
+│               │ + MG (FABRIC) │                 │   │  RF 5,8 / 2,4  │
+│               └──┬────────────┘                 │   │  / 868 MHz     │
+│                  │ Router CAN↔RJ45 (COM-003)    │──→│  (5) RJ45-RS   │
+│                  │ (única travessia autorizada) │←──│  série         │
+└──────────────────┴─────────────────────────────┘   └────────────────┘
+```
 
-* receção de mensagens TLV via CAN FD;
-* validação (CRC8, estrutura, limites);
-* encaminhamento para o módulo destinatário;
-* gestão de prioridades (CAN ID + TLV MSG_ID);
-* gestão de eventos;
-* gestão de filas;
-* entrega ao destinatário;
-* fragmentação e reconstituição quando necessário.
-
-Nenhum módulo deverá implementar mecanismos próprios de comunicação paralelos à arquitetura definida pelo sistema.
-
----
-
-# 13. Comunicação e Temporização
-
-A comunicação entre grupos deverá respeitar os requisitos temporais definidos em `SYS-008`.
-
-* A frequência de comunicação é independente da frequência de aquisição de sensores;
-* Heartbeats são transmitidos periodicamente para todos os grupos;
-* Eventos de segurança são transmitidos imediatamente, sem aguardar o ciclo periódico;
-* Timeouts por grupo determinam a perda de comunicação;
-* Sincronização temporal é executada via MSG_SYNC_REQ/MSG_SYNC_RESP.
+Consequência prática: a perda total de RF não provoca perda de controlo; provoca apenas perda de vídeo descendente e de comando/telemetria ascendente/descendente. O voo prossegue sob autoridade do G-CTV supervisionado pelo G-FS e orquestrado pelo MG.
 
 ---
 
-# 14. Comunicação e Segurança
+# 7. Camadas por rede
 
-A arquitetura de comunicação suporta os mecanismos de segurança definidos em `SEC/`:
+## 7.1 Redes CAN (1, 2, 3) — três camadas
 
-* ESP32-FS possui acesso a ambos os buses;
-* Mensagens de segurança utilizam o bus dedicado;
-* CAN IDs de segurança possuem prioridade SUPER_CRITICAL;
-* HMAC e SEQ previnem ataques de injeção e replay;
-* Perda de comunicação com ESP32-FS é tratada como condição de emergência;
-* O bus de segurança permanece funcional mesmo perante falhas no bus operacional.
+```
+┌─────────────────────────────────────────┐
+│ APLICAÇÃO: TLV                          │
+│ START 0xAA │ MSG_ID │ COUNT │ FIELDS    │
+│ + CRC8 (SMBUS 0x07) [+HMAC+SEQ, via SEC]│
+└──────────────────┬──────────────────────┘
+                   ▼
+┌─────────────────────────────────────────┐
+│ TRANSPORTE: CAN-FD, ID 29 bits          │
+│ prioridade │ origem │ destino │ tipo    │
+│ Payload até 64 B; fragmentação se >64 B │
+└──────────────────┬──────────────────────┘
+                   ▼
+┌─────────────────────────────────────────┐
+│ FÍSICA: CAN-FD, par entrançado 120 Ω    │
+│ Transceivers ISO1050 / MCP2562FD /      │
+│ controladores MCP2518FD (ver COM-008)   │
+└─────────────────────────────────────────┘
+```
+
+## 7.2 FABRIC (4) — IPC intra-cluster
+
+Enquadramento próprio (não é TLV): SOURCE / DESTINO / NÚCLEO / TIPO / REQ_ID / TIMESTAMP / COMPRIMENTO / PAYLOAD / CRC. Tipos: SENSOR_DATA, MATH_REQUEST, RESPONSE, NAVIGATION_, MISSION_, HEALTH_STATUS, SYSTEM_STATUS, TIME_SYNC, FAULT, HEARTBEAT. RPC entre núcleos com latência determinística. Tecnologia física (SPI/DMA/PIO/shmem) a definir no projecto detalhado; o protocolo lógico aqui especificado é invariante à tecnologia (ver COM-002 Anexo A e COM-003).
+
+## 7.3 RJ45-Privada RS (5) — série ponto-a-ponto
+
+Enquadramento série próprio (não é TLV nativo; encapsula TLV apenas no sub-caso comando/telemetria). Protocolo eléctrico série tipo RS-422/485, a confirmar no esquemático. Dois segmentos independentes: vídeo e comando/telemetria (ver §8 e COM-002 Anexo B).
+
+---
+
+# 8. Segmentos da RJ45-Privada RS
+
+| Segmento | Extremidades | Conteúdo | Exemplo numérico |
+|---|---|---|---|
+| Vídeo | G-VIS (GCV) ←→ placa TX 5,8 GHz | Vídeo 720p30 (1280×720, 30 qps) | 720p30 H.264 ≈ 4–8 Mbit/s no ar; **zero bytes de vídeo** na CAN |
+| Comando/telemetria | MG ←→ módulo RX 2,4 GHz + TX 868 MHz | Comando ascendente + telemetria descendente em série | 2,4 GHz: comando a 50 Hz (20 ms); 868 MHz: telemetria a 10 Hz + rajadas de evento; débitos série típicos 115 200–921 600 bit/s conforme esquemático |
+
+Ambos os segmentos usam conectores RJ45 **privados** (rede fechada, sem Ethernet IP): o RJ45 é apenas o suporte mecânico do par série. É proibido ligar estes conectores a redes Ethernet convencionais.
+
+---
+
+# 9. Endereçamento e encaminhamento (resumo)
+
+* CAN-Intra-Grupo: endereçamento local ao grupo; o Master de Grupo filtra e promove para a CAN-Principal apenas o que for inter-grupos.
+* CAN-Principal: CAN-ID de 29 bits com origem = Master emissor, destino = Master destinatário ou difusão; o MG participa como Master orquestrador; o Router GCV participa apenas para descritores de vídeo/estado e encaminhamento de comando/telemetria autorizado.
+* CAN-FailSafe: apenas dois interlocutores (G-FS e AE); sem encaminhamento, sem difusão para outras redes.
+* FABRIC: endereçamento por (núcleo origem, núcleo destino, REQ_ID); RPC com correlação pedido/resposta.
+* RJ45-RS: ponto-a-ponto sem endereçamento global; o Router CAN↔RJ45 traduz e polica (COM-003, COM-007).
+
+O detalhe da matriz TX/RX e das regras de encaminhamento consta de COM-007.
+
+---
+
+# 10. Prioridades (resumo)
+
+Cada rede possui o seu espaço de prioridades (COM-004). A CAN-FailSafe opera permanentemente em SUPER_CRITICAL sem descarte. A CAN-Principal arbitra por CAN-ID com mapeamento a partir do MSG_ID TLV. O FABRIC arbitra por tipo IPC e por núcleo (8 núcleos do MG com escalonamento determinístico). A RJ45-RS arbitra por direcção (comando ascendente prevalece sobre telemetria periódica; vídeo é fluxo contínuo isolado no seu segmento).
+
+---
+
+# 11. Tempo, eventos e integridade (resumo)
+
+* Sincronização: raiz no Supervisor Cluster sedeado no MG; difusão TIME_SYNC para as CAN (COM-009).
+* Eventos: sem atalho MISSÃO→ATUADOR; todo o comando de missão passa por validação do Controlo de Voo e supervisão do FailSafe (COM-005).
+* Integridade: CAN-CRC nativo + CRC8 TLV + HMAC + SEQ nas CAN; CRC FABRIC no FABRIC; HMAC/TrustZone/SHA do RP2350 onde aplicável (COM-010).
+* Timeouts: por rede, incluindo perda de 1×RP2350 do cluster (COM-006).
+
+---
+
+# 12. Segurança multi-camada (resumo)
+
+| Camada | Mecanismo | Onde |
+|---|---|---|
+| 1 | CRC nativo CAN-FD (17 bits) | Redes 1–3 |
+| 2 | CRC8 TLV (SMBUS 0x07) | Redes 1–3 (aplicação) |
+| 3 | HMAC (32 B) | Redes 1–3, via módulo de segurança |
+| 4 | CAN-ID + filtragem origem/destino | Redes 1–3 (transporte) |
+| 5 | SEQ anti-repetição (4 B) | Redes 1–3, via módulo de segurança |
+| F | CRC FABRIC | Rede 4 |
+| R | Soma de verificação série + SEQ de enlace | Rede 5 |
+| H | TrustZone / SHA do RP2350 | MG (rede 4) e Masters com RP2350 |
+
+---
+
+# 13. Fragmentação (só CAN)
+
+Mensagens TLV superiores a 64 B são fragmentadas em múltiplos quadros CAN-FD. O FABRIC possui o seu próprio mecanismo de segmentação (não é fragmentação CAN). A RJ45-RS série não fragmenta TLV; encapsula e segmenta segundo o seu enquadramento. Ver COM-002 e COM-003.
+
+Exemplo numérico: CAN-FD 64 B − sobrecarga de transporte ≈ 8–12 B ⇒ ≈ 52–56 B úteis para TLV; mensagem mínima TLV = 4 B (START+MSG_ID+COUNT+CRC8) ⇒ ≈ 48 B livres para campos por quadro.
+
+---
+
+# 14. Gestão das comunicações (resumo)
+
+Três funções distintas, sem acumulação indevida (COM-003):
+
+1. **Gestor CAN-TLV** — em cada Master de Grupo e no MG; valida, fragmenta, enfileira e entrega TLV nas redes 1–3.
+2. **Gestor FABRIC** — dentro do MG; IPC/RPC determinístico entre os 8 núcleos.
+3. **Router CAN↔RJ45** — no MG (comando/telemetria) e no Router GCV (vídeo/descritores); única travessia autorizada entre interno e externo.
+
+É proibido implementar mecanismos paralelos de comunicação inter-grupos fora destas três funções.
 
 ---
 
 # 15. Escalabilidade
 
-A arquitetura de comunicação permite:
-
-* adicionar novos Grupos Computacionais com CAN IDs próprios;
-* adicionar novos elementos dentro de grupos existentes;
-* adicionar novos tipos de mensagens (MSG_ID);
-* adicionar novos campos TLV;
-* adicionar novos comandos;
-* utilizar novos meios de transporte (LoRa, Ethernet) sem alterar o TLV;
-* expandir o CAN ID para mais bits quando necessário.
-
-A introdução de novos elementos deverá procurar manter compatibilidade com a arquitetura existente.
+* Adição de novo Grupo Computacional: atribui-se-lhe uma CAN-Intra-Grupo dedicada e um Master na CAN-Principal, sem alterar o TLV.
+* Adição de elementos dentro de um grupo: confinada à CAN-Intra-Grupo respectiva.
+* Novos MSG_ID / campos TLV: por extensão, sem quebra de compatibilidade (COM-002).
+* Novo núcleo lógico no MG: por partição dos 8 núcleos físicos (COM-004).
+* Novo segmento RF: apenas via nova RJ45-Privada RS dedicada, jamais por partilha do segmento de vídeo com comando.
 
 ---
 
-# 16. Limites do Documento
+# 16. Nota histórica de migração
 
-Este documento não define detalhadamente:
-
-* estrutura completa das mensagens TLV;
-* tabela completa de CAN IDs;
-* parâmetros elétricos do CAN;
-* algoritmos de fragmentação;
-* implementação do gestor de comunicações;
-* implementação do parser TLV;
-* regras completas de timeout;
-* regras completas de prioridade.
-
-Esses elementos encontram-se definidos nas especificações correspondentes (`COM-002`, `COM-004`, `COM-007`, `COM-008`, `COM-010`).
+> Em versões preliminares do projecto foram utilizados, a título experimental, Raspberry Pi e ESP32 (incluindo variantes e um elemento designado FS_A). Essas plataformas **não são entidades da presente arquitetura** e não possuem CAN-ID, endereço FABRIC nem presença na RJ45-Privada RS. Qualquer diagrama, tabela ou código que as refira como actores deve considerar-se revogado e ser migrado para a nomenclatura do §3 e para o modelo de 5 redes do §4.
 
 ---
 
-# 17. Referências
+# 17. Limites do documento
 
-- SHARED-TLV — Definições do Protocolo TLV
-- SHARED-CAN-IDS — Alocação de CAN IDs
-- COM-002 — Protocolo TLV
-- COM-003 — Gestor de Mensagens
-- COM-004 — Prioridades e Filas
-- COM-007 — Comunicação entre Domínios Computacionais
-- COM-008 — CAN Bus
-- COM-010 — Integridade
-- HW-006 — Interfaces de Comunicação
-- HW-004 — Interfaces Elétricas
-- SYS-003 — Arquitetura de Software
-- SYS-005 — Fluxo Global de Informação
-- SYS-008 — Gestão Temporal
-- SEC — Especificações de Segurança
+Este documento não detalha: estrutura integral do TLV (COM-002), comportamento dos gestores e do router (COM-003), prioridades e filas (COM-004), eventos (COM-005), tempos-limite e recuperação (COM-006), matriz TX/RX e encaminhamento (COM-007), parâmetros eléctricos do CAN (COM-008), sincronização (COM-009) nem integridade aprofundada (COM-010).
+
+---
+
+# 18. Referências
+
+* COM-002 — Protocolo TLV (+ Anexos FABRIC e RJ45)
+* COM-003 — Gestor de Mensagens (CAN-TLV + FABRIC + Router CAN↔RJ45)
+* COM-004 — Prioridades e Filas (por rede + 8 núcleos)
+* COM-005 — Eventos
+* COM-006 — Timeouts e Recuperação
+* COM-007 — Comunicação entre Domínios Computacionais
+* COM-008 — CAN Bus
+* COM-009 — Sincronização
+* COM-010 — Integridade

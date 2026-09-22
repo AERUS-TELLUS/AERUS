@@ -1,630 +1,251 @@
-# HW-006 — Interfaces_de_Comunicacao
+# HW-006 — Interfaces de Comunicação
 
-| Campo             | Valor                     |
-| ----------------- | ------------------------- |
-| **Código**        | HW-006                    |
-| **Título**        | Interfaces de Comunicação |
-| **Versão**        | 1.0                       |
-| **Estado**        | Em Desenvolvimento        |
-| **Autor**         | ShegaPT                   |
+| Campo | Valor |
+| --- | --- |
+| **Código** | HW-006 |
+| **Título** | Interfaces de Comunicação |
+| **Versão** | 2.0 |
+| **Estado** | Em Desenvolvimento |
+| **Autor** | ShegaPT |
 | **Classificação** | Especificação de Hardware |
+| **Referência** | docs/Esquemas/Arquitetura-Computacional.md |
 
 ---
 
 # 1. Objetivo
 
-O presente documento define a arquitetura das interfaces utilizadas para comunicação entre os diferentes Grupos Computacionais que constituem o Aerus.
+O presente documento define a arquitetura física e lógica das comunicações do sistema AERUS-TELLUS: as cinco redes oficiais (R1 CAN-Principal, R2 Interconnect Fabric do Master Geral, R3 ligação interna do GCV, R4 rádio 5,8 GHz, R5 rádios 2,4 GHz e 868 MHz), a separação entre interface física e protocolo, a comunicação entre processadores (IPC/RPC) no cluster de 4 × RP2350, as regras de prioridade, filas, temporização, integridade e recuperação, e a relação com o protocolo de aplicação.
 
-O objetivo é estabelecer quais os meios físicos de comunicação utilizados, os princípios gerais de ligação entre os diferentes domínios e as condições gerais para troca de informação entre elementos computacionais.
-
-A definição detalhada do protocolo de comunicação pertence à especificação `COM/`.
+Explica como um valor medido num RP2040 chega, normalizado, a um núcleo de voo, como dois núcleos do cluster cooperam sem partilhar memória de forma ingénua e como o vídeo nunca congestiona o barramento operacional.
 
 ---
 
-# 2. Princípio Geral
+# 2. Âmbito
 
-A comunicação entre diferentes elementos de hardware do Aerus deverá utilizar interfaces físicas adequadas à função e à arquitetura do sistema.
+Abrange:
 
-Na arquitetura atualmente definida, a comunicação entre diferentes Grupos Computacionais será realizada através de **CAN FD** (Controller Area Network with Flexible Data-rate).
+* as cinco redes: meio físico, utilizadores, débitos e responsabilidades;
+* CAN-Principal (R1): topologia, terminação, encaminhamento Master Geral ↔ GCV-Router;
+* Interconnect Fabric (R2): malha SPI/PIO/DMA + memória partilhada, IPC/RPC, supervisão;
+* ligação de visão (R3): i.MX ↔ Router RP2350 ↔ R1; MIPI interno;
+* redes rádio (R4/R5): RJ45-RS para COMM-RF 5,8 GHz / 2,4 GHz / 868 MHz;
+* prioridades, eventos, filas, temporização, integridade, falha e recuperação.
 
-A comunicação entre controladores e periféricos (sensores e atuadores) utiliza interfaces seriais dedicadas (**UART**, **SPI**, **I2C**), conforme as necessidades de cada periférico.
+Não abrange:
 
-Isto aplica-se tanto a:
-
-* comunicação entre ESP32 e RaspberryPi (CAN FD);
-* comunicação entre diferentes RaspberryPi (CAN FD);
-* comunicação entre diferentes elementos de outros Grupos Computacionais (CAN FD);
-* comunicação entre controladores e sensores (UART/SPI/I2C);
-* comunicação entre controladores e atuadores (UART/SPI/I2C).
-
----
-
-# 3. CAN FD
-
-O CAN FD (Controller Area Network with Flexible Data-rate) constitui a interface física de comunicação entre diferentes domínios computacionais do Aerus.
-
-A utilização de CAN FD deverá permitir comunicação:
-
-* entre microcontroladores;
-* entre microcontroladores e RaspberryPi;
-* entre diferentes elementos RaspberryPi;
-* entre elementos pertencentes ao mesmo Grupo Computacional quando necessário.
-
-O CAN FD é utilizado em dois buses independentes:
-
-* **Bus operacional** — partilhado por todos os Grupos Computacionais;
-* **Bus de segurança** — dedicado à comunicação entre ESP32-FS e ESP32-FS_A.
-
-Os parâmetros elétricos, CAN IDs e configuração de cada ligação serão definidos na configuração específica da aeronave e documentados em `COM-008` e `shared/CAN_IDS`.
+* níveis elétricos ao pino (ver HW-004);
+* energia (ver HW-005);
+* periféricos concretos (ver HW-007);
+* estrutura completa das mensagens e tabelas de tipos (ver COM).
 
 ---
 
-# 4. Separação entre Interface e Protocolo
+# 3. Descrição
 
-A comunicação do Aerus é composta por três camadas independentes:
+## 3.1 As cinco redes
+
+| Rede | Designação oficial | Meio físico | Extremos | O que transporta |
+| --- | --- | --- | --- | --- |
+| R1 | CAN-Principal | CAN FD, par trançado blindado, 120 Ω nas extremidades | Todos os Masters/Routers: Sensorial, Atuador, Cluster, GCV-Router, Comunicação | Sensores normalizados, comandos validados, estados, missão, saúde, energia, eventos |
+| R2 | Interconnect Fabric do Master Geral | Malha ponto a ponto: SPI dedicado + PIO + DMA + memória partilhada externa (detalhe por fechar) | RP2350 #1 ⇄ #2 ⇄ #3 ⇄ #4 dentro da COMPUTE-FLIGHT-CLUSTER | IPC/RPC determinístico entre os 8 núcleos: pedidos matemáticos, navegação, supervisão, sincronismo |
+| R3 | Ligação de Visão GCV↔Sistema | Interna à carrier: UART/SPI/Ethernet i.MX↔Router; MIPI CSI câmara→i.MX; saída Router→R1 | i.MX 8M Plus ↔ Router RP2350 ↔ R1 | Metadados, estado, heartbeat, telemetria compacta, futuras deteções; nunca píxeis em bruto |
+| R4 | Rádio 5,8 GHz | RJ45-RS GCV→COMM-RF 5,8 GHz → TX para terra | GCV → estação terrestre | Vídeo 720p30 + telemetria descendente de visão |
+| R5 | Rádios 2,4 GHz + 868 MHz | RJ45-RS Master Geral→COMM-RF 2,4 GHz (RX) e 868 MHz (TX/RX) | Operador/terra ↔ Master Geral | Comando ascendente, telemetria bidirecional, diagnóstico remoto |
+
+```text
+                    CAN-Principal R1
+                         │
+   ┌─────────┬───────────┼────────────┬──────────┐
+   ▼         ▼           ▼            ▼          ▼
+SENSORIAL  ATUADOR  FLIGHT-CLUSTER  GCV-Router  COMUNICAÇÃO
+ (RP2040/    (RP2040/  (R2 interno:   (R3: i.MX   (R1 + R4/R5
+  RP2350)    RP2350)   4×RP2350 em    ↔Router)    via RJ45)
+                       malha)
+                         │              │
+                    RJ45─┼─→2,4/868     RJ45─→5,8 GHz TX
+```
+
+Comunicação interna (R1/R2/R3) e comunicação externa (R4/R5) são problemas distintos, com requisitos, débitos e ameaças distintos. O barramento externo nunca substitui o interno.
+
+## 3.2 R1 — CAN-Principal em detalhe
+
+Topologia em barramento com stubs curtos; terminação nas extremidades; transceptores com proteção e modo silencioso. Cada grupo participa através do seu Master/Router — nenhum sensor ou atuador fala R1 diretamente sem passar pelo RP2040/RP2350 que o serve.
+
+Camadas (o detalhe lógico pertence a COM):
 
 ```text
 ┌───────────────────────────────┐
-│       CAMADA DE APLICAÇÃO     │
-│                               │
-│   TLV + Prioridade + Eventos  │
-│   Filas + Gestão de Mensagens │
+│ APLICAÇÃO  — mensagens,       │
+│  prioridades, eventos, filas  │
 └───────────────┬───────────────┘
-                │
                 ▼
 ┌───────────────────────────────┐
-│      CAMADA DE TRANSPORTE     │
-│                               │
-│   CAN FD (29-bit ID)          │
-│   Roteamento + Prioridade     │
-│   + Fragmentação              │
+│ TRANSPORTE — CAN FD,          │
+│  encaminhamento, fragmentação │
 └───────────────┬───────────────┘
-                │
                 ▼
 ┌───────────────────────────────┐
-│       CAMADA FÍSICA           │
-│                               │
-│   CAN FD (twisted pair)       │
-│   Terminação + Born-off       │
-└───────────────┬───────────────┘
-                │
-                ▼
-┌───────────────────────────────┐
-│      Outro Grupo Computacional│
+│ FÍSICA — par trançado,        │
+│  terminação, proteção         │
 └───────────────────────────────┘
 ```
 
-A especificação detalhada destas camadas pertence a `COM/`.
-
----
-
-# 5. Comunicação entre Grupos Computacionais
-
-Os diferentes Grupos Computacionais poderão comunicar entre si sempre que exista uma necessidade funcional válida.
-
-A existência de uma ligação física entre dois grupos não significa que todos os dados devam ser diretamente partilhados entre eles.
-
-Cada comunicação deverá possuir uma finalidade lógica dentro da arquitetura.
-
-Quando uma informação puder seguir o fluxo normal do sistema, deverá preferencialmente utilizar esse fluxo em vez de criar uma comunicação direta desnecessária.
-
----
-
-# 6. Ligações Atualmente Definidas
-
-A arquitetura atualmente estabelecida contempla dois buses CAN FD independentes:
+Quem fala com quem em R1 (fluxos válidos):
 
 ```text
-BUS OPERACIONAL (partilhado):
-┌──────────────────────────────────────────────────────────────────┐
-│  ESP32-S_01   ESP32-S_02   RaspberryPi   ESP32-A   ESP32-FS    │
-│  CAN_ID:0x11  CAN_ID:0x12  CAN_ID:0x01  CAN_ID:0x21 CAN_ID:0x31│
-└──────────────────────────────────────────────────────────────────┘
-
-BUS SEGURANÇA (dedicado):
-┌──────────────────────────────────────────────────────────────────┐
-│  ESP32-FS    ESP32-FS_A                                         │
-│  CAN_ID:0x31  CAN_ID:0x41                                      │
-└──────────────────────────────────────────────────────────────────┘
-
-        ESP32-FS está conectado a AMBOS os buses
+Sensorial ──► Voo/Navegação/Missão/Cálculo/FailSafe (dados + qualidade)
+Voo ──► Atuador (comandos validados)
+Atuador ──► todos (estado + feedback + diagnóstico)
+Missão ──► Voo/FailSafe (pedidos; nunca ordens ao Atuador)
+FailSafe ──► Atuador (inibição) + todos (decisões e saúde)
+GCV-Router ──► todos (estado, heartbeat, telemetria compacta)
+Comunicação ──► terra / terra ──► Master Geral (via R5)
 ```
 
-A tabela completa de alocação de CAN IDs encontra-se em `shared/CAN_IDS`.
+## 3.3 R2 — Interconnect Fabric e IPC/RPC
 
-A comunicação entre controladores e periféricos utiliza interfaces seriais dedicadas:
+Os quatro RP2350 do Master Geral são nós independentes sobre uma malha de alta velocidade e baixa latência. Candidatas em avaliação: SPI dedicado por par de nós, múltiplos SPI em paralelo, PIO com protocolo dedicado, DMA com buffer duplo, memória partilhada externa e, se necessário, interligação dedicada. O objetivo é determinismo, não débito bruto.
 
 ```text
-ESP32-S    ←─UART/SPI/I2C─→ Sensores
-ESP32-A    ←─UART/SPI/I2C─→ Atuadores
-ESP32-FS   ←─UART/SPI/I2C─→ Sensores supercríticos
-ESP32-FS_A ←─UART/SPI/I2C─→ Atuadores emergência
+             RP2350 #1 (Voo/Fusão)
+                │         │
+        ┌───────┘         └───────┐
+        ▼                         ▼
+ RP2350 #2 (Nav/Cálculo)   RP2350 #3 (Missão ×2)
+        │                         │
+        └───────┐         ┌───────┘
+                ▼         ▼
+             RP2350 #4 (Supervisão/Diagnóstico)
 ```
 
----
-
-# 7. ESP32-S
-
-O Grupo Computacional ESP32-S deverá comunicar diretamente com:
-
-* RaspberryPi;
-* ESP32-FS.
-
-A comunicação com RaspberryPi permite disponibilizar os dados de sensores ao sistema de operação normal.
-
-A comunicação com ESP32-FS permite que o domínio de segurança tenha acesso aos dados necessários para executar as suas próprias avaliações.
-
-O ESP32-S não deverá depender exclusivamente do RaspberryPi para disponibilizar informação ao ESP32-FS.
-
----
-
-# 8. RaspberryPi
-
-O Grupo Computacional RaspberryPi deverá comunicar diretamente com:
-
-* ESP32-S;
-* ESP32-A;
-* ESP32-FS;
-* outros elementos RaspberryPi quando existirem.
-
-A comunicação com ESP32-A permite ao RaspberryPi enviar os comandos de controlo resultantes do processamento de voo.
-
-A comunicação com ESP32-FS permite ao RaspberryPi solicitar ações relacionadas com segurança e receber informação proveniente desse domínio.
-
-O RaspberryPi não comunica diretamente com ESP32-FS_A.
-
----
-
-# 9. ESP32-A
-
-O Grupo Computacional ESP32-A deverá receber os comandos normais de controlo de voo diretamente do RaspberryPi.
-
-O ESP32-A poderá ainda receber do ESP32-FS uma ordem específica de **inibição**.
-
-Essa ordem não constitui um comando de voo.
-
-Consequentemente:
+Formato conceptual de mensagem IPC:
 
 ```text
-RaspberryPi ──────► ESP32-A
-   comandos de voo
-
-ESP32-FS ─────────► ESP32-A
-   inibição
+ORIGEM, DESTINO, NÚCLEO, TIPO, REQUEST_ID, TIMESTAMP,
+COMPRIMENTO, CARGA, CRC
 ```
 
-O ESP32-FS não deverá enviar comandos normais de controlo de voo ao ESP32-A.
+Tipos iniciais: `SENSOR_DATA, ACTUATOR_DATA, MATH_REQUEST/RESPONSE, NAV_REQUEST/RESPONSE, MISSION_REQUEST/RESPONSE, HEALTH_STATUS, SYSTEM_STATUS, TIME_SYNC, FAULT, HEARTBEAT`.
 
----
-
-# 10. ESP32-FS
-
-O Grupo Computacional ESP32-FS possui a posição hierárquica superior no domínio de segurança.
-
-Deverá possuir comunicação com os restantes Grupos Computacionais necessários à execução das suas responsabilidades.
-
-Entre as comunicações atualmente definidas encontram-se:
-
-* ESP32-S;
-* RaspberryPi;
-* ESP32-A;
-* ESP32-FS_A.
-
-A comunicação do ESP32-FS com os restantes grupos não significa que este assuma automaticamente todas as funções desses grupos.
-
-A comunicação deverá servir exclusivamente as responsabilidades atribuídas ao domínio de segurança.
-
----
-
-# 11. ESP32-FS_A
-
-O Grupo Computacional ESP32-FS_A recebe ordens diretamente do ESP32-FS.
-
-Não deverá receber comandos normais de voo provenientes do RaspberryPi.
-
-A comunicação existente entre ESP32-FS e ESP32-FS_A deverá permitir ao domínio de segurança executar as funções atribuídas ao ESP32-FS_A durante condições de FailSafe/FailSecure.
-
----
-
-# 12. Comunicação Normal e Comunicação de Segurança
-
-A arquitetura deverá distinguir logicamente entre:
-
-**Comunicação operacional normal**
+Exemplo de chamada:
 
 ```text
-RaspberryPi
-    │
-    ▼
-ESP32-A
+Núcleo de Missão ─MATH_REQUEST─► Núcleo de Cálculo
+  (executa com FPU/DSP)
+Núcleo de Cálculo ─MATH_RESPONSE─► Núcleo de Missão
 ```
 
-e:
+Um núcleo supervisor (no RP2350 #4) observa heartbeats, latências, erros, bloqueios e integridade, gere reinicialização seletiva e sincronização temporal e publica a saúde do cluster em R1. A função de supervisor do cluster não se confunde com o Grupo FailSafe: o primeiro protege a infraestrutura computacional; o segundo protege o voo.
 
-**Comunicação de segurança**
-
-```text
-ESP32-FS
-    │
-    ├──► ESP32-A
-    │       inibição
-    │
-    └──► ESP32-FS_A
-            comandos de segurança
-```
-
-A existência de ambas as vias deverá permitir que o domínio de segurança mantenha a capacidade de intervir quando necessário sem assumir o controlo normal do sistema de voo.
-
----
-
-# 13. Comunicação Direta
-
-Uma comunicação direta entre dois módulos poderá ser utilizada quando existir uma razão lógica para tal.
-
-A comunicação direta deverá ser preferida quando:
-
-* a informação for necessária diretamente pelo destinatário;
-* o fluxo normal provocar atraso desnecessário;
-* existir uma necessidade de segurança;
-* existir uma necessidade temporal;
-* o acesso direto reduzir processamento ou complexidade.
-
-A comunicação direta não deverá ser utilizada simplesmente porque existe uma ligação física disponível.
-
----
-
-# 14. Fluxo Normal de Informação
-
-Quando não existir necessidade de comunicação direta, a informação deverá seguir o fluxo normal definido pela arquitetura de software.
-
-Exemplo conceptual:
+## 3.4 R3 — Ligação de visão
 
 ```text
-Sensor
+Câmara ─MIPI CSI─► i.MX 8M Plus (ISP→CPU/GPU/NPU→VPU 720p60/720p30)
   │
+  │ UART/SPI/Ethernet interna
   ▼
-ESP32-S
+Router RP2350 ─CAN-Principal R1 (metadados + estado)
   │
+  │ RJ45
   ▼
-RaspberryPi
-  │
-  ▼
-Módulo de Controlo
+COMM-RF 5,8 GHz (R4)
 ```
 
-Um módulo não deverá contornar deliberadamente este fluxo sem motivo funcional válido.
+O Router filtra: o barramento operacional recebe caixas de deteção, contadores, estados e alarmes — nunca fotogramas. O débito de píxeis separam-se fisicamente do CAN-Principal por construção.
 
----
+## 3.5 R4/R5 — Redes rádio via RJ45-RS
 
-# 15. Protocolo TLV
+* **R4 (5,8 GHz TX):** GCV → RJ45 → placa COMM-RF 5,8 GHz → estação terrestre. Transporta vídeo 720p30 + telemetria descendente de visão.
+* **R5 (2,4 GHz RX + 868 MHz):** Master Geral → RJ45 → placas COMM-RF 2,4 GHz (comando ascendente) e 868 MHz (telemetria bidirecional de longo alcance). O Master Geral valida, autentica e publica em R1 apenas o que passou nas verificações.
 
-As mensagens transmitidas entre diferentes elementos computacionais são estruturadas através de um protocolo completo baseado em **TLV — Type, Length, Value**.
+As placas COMM-RF são periféricos inteligentes com presença identificada; a sua ausência é um evento de diagnóstico, não um bloqueio do sistema interno.
 
-O TLV é um protocolo autónomo e seguro, constituído por:
+## 3.6 Papel dos processadores nas redes
 
-* START (0xAA) — byte de sincronização;
-* MSG_ID (0x10-0x1F) — tipo de mensagem;
-* TLV_COUNT — número de campos;
-* TLV_FIELDS — campos ID+LEN+DATA;
-* CRC8 (SMBUS 0x07) — integridade;
-* HMAC (32 bytes) — autenticação (opcional, via módulo Security);
-* SEQ (4 bytes) — anti-replay (opcional).
+| Processador | Rede | Função |
+| --- | --- | --- |
+| RP2040 | R1 via controlador CAN; série local com sensores/atuadores | Amostrar/publicar; comandar/devolver estado; respeitar prioridade e período de R1 |
+| RP2350B | R1 como Master/Router; R2 como nó do Fabric; R3 como Router do GCV; R4/R5 como gestor via RJ45 | Agregar, fundir, validar, supervisionar, encaminhar, autenticar |
+| i.MX 8M Plus | R3 interna + R4 via Router | Codificar vídeo, inferir (futuro), registar; nunca falar R1/R5 diretamente |
 
-A estrutura detalhada dos campos, tipos, comprimentos, valores e regras de validação pertence a `COM-002` e `shared/TLV_DEFINITIONS`.
+## 3.7 Prioridade, eventos, filas, temporização
 
----
-
-# 16. Prioridade das Mensagens
-
-As mensagens poderão possuir diferentes níveis de prioridade.
-
-A prioridade será utilizada para determinar a ordem de tratamento das mensagens quando existirem várias mensagens pendentes.
-
-De forma conceptual:
+Mensagens com prioridade (segurança e voo primeiro), eventos assíncronos fora do ciclo periódico, filas com disciplina de prioridade e deteção de saturação, frequências de aquisição (por sensor) distintas das frequências de comunicação (por grupo), com agregação no Master:
 
 ```text
-Mensagem recebida
-       │
-       ▼
-Avaliação da prioridade
-       │
-       ▼
-Gestão da mensagem
+Sensor A a 100 Hz ┐
+Sensor B a 50 Hz  ├─► Master agrega ─► pacote R1 ao período definido
+Sensor C a 20 Hz  ┘
 ```
 
-Os níveis de prioridade e as respetivas regras serão definidos em `COM/`.
+Integridade por CRC/HMAC e anti-repetição por sequência (detalhe em COM/SEC); deteção de perda por timeout/heartbeat; recuperação com espera superior ao período nominal e, após falhas consecutivas, degradação controlada ou procedimento FailSafe; anti-sobrecarga por intervalo mínimo entre pedidos repetidos.
 
 ---
 
-# 17. Comunicação Orientada a Eventos
+# 4. Exemplos
 
-O protocolo suportará comunicação orientada a eventos.
-
-Os eventos constituem uma parte fundamental do mecanismo de aquisição e transmissão de informação do Aerus.
-
-Os eventos associados à aquisição e aos sensores serão definidos em `SEN/`.
-
-Eventos relacionados com segurança, alertas e alarmes serão definidos em `SEC/`.
-
-Este documento apenas estabelece que a infraestrutura física deverá suportar esse modelo de comunicação.
-
----
-
-# 18. Filas de Mensagens
-
-Cada elemento que necessite de processar mensagens deverá possuir mecanismos de fila adequados.
-
-A utilização de filas deverá impedir que a chegada simultânea de várias mensagens provoque *overflow* ou perda descontrolada de informação.
-
-A fila deverá respeitar as regras de prioridade definidas pelo protocolo.
-
-De forma conceptual:
+## Exemplo 1 — Ciclo normal sensor→atuador
 
 ```text
-Mensagens
-   │
-   ▼
-┌─────────────────┐
-│ Fila de Entrada │
-└────────┬────────┘
-         │
-         ▼
-   Prioridade
-         │
-         ▼
-     Processamento
+COMPUTE-SENSORIAL (RP2040) publica altitude normalizada em R1 a 20 Hz
+  → Fusão (R2) + Navegação (R2) refinam → Voo (R2) calcula comando
+  → Voo publica comando validado em R1
+  → COMPUTE-ACTUATOR executa PWM e publica feedback em R1
+  → FailSafe observa tudo e regista saúde
 ```
 
----
-
-# 19. Ordem de Processamento
-
-A gestão das mensagens deverá considerar, pela ordem definida para o sistema:
-
-1. prioridade;
-2. eventos;
-3. processamento através da fila correspondente.
-
-A implementação concreta desta lógica pertence ao protocolo `COM/`.
-
----
-
-# 20. Comunicação e Temporização
-
-A comunicação entre grupos deverá respeitar os requisitos temporais definidos pelo Aerus.
-
-Nem todas as mensagens terão necessariamente a mesma periodicidade.
-
-A frequência de comunicação poderá depender de:
-
-* tipo de informação;
-* módulo;
-* modo de funcionamento;
-* estado do sistema;
-* prioridade;
-* criticidade;
-* evento ocorrido.
-
-Os requisitos temporais detalhados serão definidos em `COM/` e `SYS-008`.
-
----
-
-# 21. Frequência de Comunicação
-
-Cada Grupo Computacional poderá possuir uma frequência geral de comunicação com os restantes elementos.
-
-Esta frequência é independente da frequência individual de aquisição de cada sensor.
-
-Por exemplo:
+## Exemplo 2 — Evento assíncrono de segurança
 
 ```text
-Sensor A ── aquisição ──►
-Sensor B ── aquisição ──► ESP32-S
-Sensor C ── aquisição ──►
-                           │
-                           │ acumulação
-                           ▼
-                    Pacote de dados
-                           │
-                           │ frequência de comunicação
-                           ▼
-                     CAN FD / TLV
+Nó FailSafe deteta divergência de IMU fora do ciclo
+  → publica FAULT prioritário em R1 imediatamente
+  → Voo congela modo, Missão suspende plano, Atuador prepara estado seguro
+  → Comunicação sinaliza terra via R5; GCV regista contexto em R3/R4
 ```
 
-Assim, um ESP32-S poderá adquirir diferentes sensores em frequências distintas e posteriormente transmitir os dados segundo a frequência de comunicação definida.
-
----
-
-# 22. Comunicação Assíncrona
-
-A arquitetura deverá permitir que mensagens sejam recebidas e processadas independentemente da periodicidade de outros módulos.
-
-Uma alteração de estado, evento ou condição de segurança poderá gerar uma mensagem fora do ciclo periódico normal.
-
-A infraestrutura de comunicação deverá ser capaz de acomodar essas mensagens sem depender exclusivamente da transmissão periódica.
-
----
-
-# 23. Overflow
-
-Nenhum elemento deverá assumir que a taxa de chegada de mensagens será sempre inferior à sua capacidade instantânea de processamento.
-
-A implementação deverá possuir mecanismos para:
-
-* armazenamento temporário;
-* priorização;
-* controlo da fila;
-* deteção de saturação;
-* tratamento de mensagens atrasadas;
-* descarte controlado quando permitido.
-
-As regras de descarte serão definidas pelo protocolo e dependerão da prioridade da mensagem.
-
----
-
-# 24. Integridade da Comunicação
-
-As mensagens deverão possuir mecanismos que permitam determinar se os dados recebidos são válidos.
-
-A implementação concreta dos mecanismos de:
-
-* integridade;
-* identificação;
-* validação;
-* autenticação;
-* proteção;
-
-será definida nas especificações de `COM/` e `SEC/`.
-
----
-
-# 25. Falha de Comunicação
-
-A perda de comunicação entre dois elementos deverá ser detetável quando a ligação for necessária à operação.
-
-A resposta dependerá da importância da ligação.
-
-Poderá resultar em:
-
-* registo da falha;
-* atraso;
-* repetição;
-* alteração do estado;
-* pedido de recuperação;
-* entrada em procedimento de segurança;
-* continuação normal quando a ligação não for crítica.
-
-As regras concretas pertencem a `COM/` e `SEC/`.
-
----
-
-# 26. Recuperação
-
-Quando uma comunicação falhar, o sistema deverá possuir mecanismos adequados de recuperação quando aplicável.
-
-Uma tentativa de recuperação poderá aguardar um intervalo superior ao intervalo normal esperado para a resposta.
-
-Após tentativas consecutivas sem resposta satisfatória, o sistema poderá:
-
-* reiniciar o ciclo;
-* avançar para o próximo ciclo;
-* executar outro procedimento definido para a condição.
-
-A decisão dependerá da criticidade da comunicação e do impacto que a espera possa causar na segurança.
-
----
-
-# 27. Cooldown
-
-Determinadas operações de comunicação, especialmente pedidos repetidos entre domínios, poderão possuir um intervalo mínimo entre tentativas.
-
-Este mecanismo deverá impedir que um módulo sobrecarregue outro através de pedidos sucessivos.
-
-O valor do *cooldown* será determinado de acordo com a função e criticidade da comunicação.
-
----
-
-# 28. Comunicação entre Elementos do Mesmo Grupo
-
-Quando um Grupo Computacional possuir vários elementos físicos, esses elementos poderão comunicar entre si através das interfaces previstas para o grupo.
-
-A existência de vários elementos não altera a identidade lógica do Grupo Computacional.
-
-Por exemplo:
+## Exemplo 3 — Vídeo sem perturbar o voo
 
 ```text
-       ESP32-S
-          │
-    ┌─────┼─────┐
-    ▼     ▼     ▼
- ESP32-S ESP32-S ESP32-S
-    01      02      03
+720p60 processado no i.MX; 720p30 segue por RJ45→5,8 GHz (R4)
+Em R1 circula apenas: «GCV OK, 30 fps, 30 ms, 0 deteções, 45 °C»
+Qualquer congestionamento em R4 nunca atrasa R1/R2.
 ```
 
-Os elementos continuam a constituir o mesmo Grupo Computacional ESP32-S.
+---
+
+# 5. Interfaces
+
+| Interface | Meio | Documento de detalhe |
+| --- | --- | --- |
+| R1 CAN-Principal | Par trançado, fichas normalizadas, stubs curtos | HW-004 (física) + COM (lógica, IDs, fragmentação) |
+| R2 Fabric | SPI/PIO/DMA + memória partilhada na CLUSTER | Projeto detalhado + COM (IPC) |
+| R3 interna GCV | MIPI + UART/SPI/Ethernet + CAN via Router | HW-004, HW-007 |
+| R4/R5 RJ45-RS | RJ45 8 vias: série + energia + presença | HW-004, HW-007 |
+| Diagnóstico externo | Via Grupo Comunicação (R5) e ficha de manutenção | COM, SEC |
 
 ---
 
-# 29. Escalabilidade
+# 6. Pontos em aberto
 
-A arquitetura de comunicação deverá permitir que um Grupo Computacional seja constituído por mais elementos no futuro.
-
-A adição de elementos não deverá exigir a alteração do princípio fundamental do protocolo.
-
-A topologia física deverá ser definida de acordo com a quantidade real de elementos presentes em cada configuração de aeronave.
-
----
-
-# 30. Expansão Futura
-
-A arquitetura deverá permitir a introdução futura de:
-
-* novos Grupos Computacionais;
-* novos elementos dentro de grupos existentes;
-* novos tipos de mensagens;
-* novos eventos;
-* novas prioridades;
-* novos periféricos;
-* novos implementos.
-
-A introdução de novos elementos deverá procurar manter compatibilidade com a arquitetura existente.
+| # | Ponto em aberto | Resolução |
+| --- | --- | --- |
+| 1 | Topologia física definitiva do Fabric, débitos, latência máxima, relógios, memória partilhada | Projeto CLUSTER + ensaio |
+| 2 | Formato IPC final, fragmentação, sincronismo temporal, arranque/atualização dos 4 nós | COM + workloads medidos |
+| 3 | Débitos CAN FD (arbitragem/dados), alocação de identificadores, política de prioridades e de descarte | COM |
+| 4 | Formato série do RJ45-RS por banda, autenticação do comando ascendente, formatos do stream 720p30 | COM + SEC + COMM-RF |
+| 5 | Mecanismo Router↔i.MX (UART/SPI/Ethernet), watchdog e recuperação do SoC | HW-007 + SO do GCV |
+| 6 | Orçamento de latência ponta a ponta (sensor→atuador) e por rede | SYS + ensaio temporal |
 
 ---
 
-# 31. Relação com a Arquitetura de Software
+# 7. Referências
 
-A interface de comunicação física não deverá determinar diretamente a organização interna dos módulos de software.
-
-Os módulos comunicam através das interfaces definidas pelo sistema, enquanto a implementação interna permanece independente.
-
-Esta separação permite atualizar um módulo sem alterar necessariamente os restantes.
-
----
-
-# 32. Limites do Documento
-
-Este documento não define detalhadamente:
-
-* estrutura completa das mensagens TLV;
-* tabela de tipos;
-* tabela de prioridades;
-* checksum;
-* CRC;
-* HMAC;
-* autenticação;
-* cifragem;
-* regras completas de retransmissão;
-* tempos concretos;
-* *timeouts* concretos;
-* *cooldowns* concretos;
-* gestão detalhada das filas;
-* estados de erro;
-* implementação de drivers CAN;
-* implementação de drivers UART/SPI/I2C para periféricos.
-
-Esses elementos deverão ser definidos em `COM/` e `SEC/`, conforme a respetiva função.
-
----
-
-# 33. Referências
-
-- HW-001 — Arquitetura_de_Hardware
-- HW-002 — Grupos_Computacionais
-- HW-003 — Distribuicao_de_Hardware
-- HW-004 — Interfaces_Eletricas
-- HW-005 — Alimentacao_e_Distribuicao_de_Energia
-- HW-007 — Interfaces_de_Perifericos
-- HW-008 — Redundancia_e_Isolamento_de_Hardware
-- HW-009 — Expansibilidade_e_Configuracao_de_Hardware
-- SYS-005 — Fluxo_Global_de_Informacao
-- SYS-006 — Gestao_de_Estados
-- SYS-008 — Gestao_Temporal
-- COM-001 — Arquitetura_de_Comunicacao
-- COM-002 — Protocolo_TLV
-- COM-008 — CAN_Bus
-- SHARED-TLV — Definições do Protocolo TLV
-- SHARED-CAN-IDS — Alocação de CAN IDs
-- SEN — Especificações de Sensores
-- SEC — Especificações de Segurança
-- COM — Especificações de Comunicações
-- IMP — Especificações de Implementos
+* HW-001 — Arquitetura de Hardware
+* HW-002 — Grupos Computacionais
+* HW-003 — Distribuição de Hardware
+* HW-004 — Interfaces Elétricas
+* HW-005 — Alimentação e Distribuição de Energia
+* HW-007 — Interfaces de Periféricos
+* HW-008 — Redundância e Isolamento de Hardware
+* HW-009 — Expansibilidade e Configuração de Hardware
+* docs/Esquemas/Arquitetura-Computacional.md

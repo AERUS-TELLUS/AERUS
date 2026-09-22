@@ -1,410 +1,221 @@
-# HW-003 — Distribuicao_de_Hardware
+# HW-003 — Distribuição de Hardware
 
-| Campo             | Valor                     |
-| ----------------- | ------------------------- |
-| **Código**        | HW-003                    |
-| **Título**        | Distribuição de Hardware  |
-| **Versão**        | 1.0                       |
-| **Estado**        | Em Desenvolvimento        |
-| **Autor**         | ShegaPT                   |
+| Campo | Valor |
+| --- | --- |
+| **Código** | HW-003 |
+| **Título** | Distribuição de Hardware |
+| **Versão** | 2.0 |
+| **Estado** | Em Desenvolvimento |
+| **Autor** | ShegaPT |
 | **Classificação** | Especificação de Hardware |
+| **Referência** | docs/Esquemas/Arquitetura-Computacional.md |
 
 ---
 
 # 1. Objetivo
 
-O presente documento define os princípios para a distribuição física dos elementos computacionais e periféricos que constituem o sistema Aerus.
+O presente documento define os princípios da distribuição física dos elementos computacionais, sensores, atuadores, antenas e cablagem na aeronave.
 
-A distribuição física deverá permitir que cada Grupo Computacional execute as suas responsabilidades de forma eficiente, mantendo a separação funcional e física necessária entre os diferentes domínios.
-
-A distribuição concreta dependerá da configuração de cada aeronave.
+Explica onde deve viver cada placa da família (COMPUTE-SENSORIAL, COMPUTE-ACTUATOR, COMPUTE-NODE, COMPUTE-FLIGHT-CLUSTER, COMPUTE-VISION-CARRIER e COMM-RF), por que razão a proximidade aos periféricos reduz ruído e cablagem, como preservar a separação entre domínios e que cuidados mecânicos, térmicos e eletromagnéticos condicionam a instalação.
 
 ---
 
-# 2. Princípio de Distribuição
+# 2. Âmbito
 
-A arquitetura do Aerus não exige que todos os elementos pertencentes a um mesmo Grupo Computacional estejam fisicamente concentrados num único local.
+Abrange:
 
-Um grupo poderá ser distribuído pela aeronave sempre que essa distribuição ofereça vantagens funcionais, elétricas, temporais ou de integração.
+* princípio de distribuição por proximidade e por domínio;
+* localização recomendada de cada PCB e de cada antena (5,8 GHz, 2,4 GHz, 868 MHz);
+* separação física do domínio FailSafe e do Master Geral;
+* cablagem, fichas RJ45-RS, CAN-Principal e alimentação 3,3/5/12 V;
+* manutenção, modularidade e expansão.
 
-A distribuição deverá procurar reduzir ligações desnecessariamente longas e evitar a concentração excessiva de funções num único elemento físico.
+Não abrange:
+
+* pinos e níveis elétricos (ver HW-004);
+* dimensionamento de energia (ver HW-005);
+* topologia lógica das redes (ver HW-006);
+* periféricos concretos (ver HW-007, SEN, ACT).
 
 ---
 
-# 3. Distribuição por Proximidade dos Periféricos
+# 3. Descrição
 
-Sempre que tecnicamente adequado, os elementos computacionais deverão ser instalados próximos dos periféricos que lhes estão associados.
+## 3.1 Princípio de distribuição
 
-Esta abordagem é especialmente relevante para o Grupo Computacional ESP32-S.
-
-Exemplo:
+A arquitetura não exige que os elementos de um mesmo grupo vivam juntos. Pelo contrário, recomenda-se distribuí-los pela célula sempre que isso reduza ligações longas, evite concentrar funções críticas num ponto único e melhore a relação sinal/ruído.
 
 ```text
-             [Sensor]
-                 │
-                 │ ligação curta
-                 ▼
-            [ESP32-S]
-                 │
-                 │ comunicação do domínio
-                 ▼
-              Aerus
+Antes (concentrado — desaconselhado):
+
+  [Sensores dispersos] ──longos cabos analógicos──► [Baía única com tudo]
+       ruído, massa de cobre, ponto único de falha
+
+Depois (distribuído — recomendado):
+
+  [Sensor] ─curto─► [COMPUTE-SENSORIAL local] ─CAN digital─► [Master Geral]
+  [Atuador] ─curto─► [COMPUTE-ACTUATOR local] ◄─CAN digital── [Master Geral]
 ```
 
-A proximidade poderá reduzir:
+A proximidade converte sinais analógicos frágeis em mensagens digitais robustas logo na origem.
 
-* comprimento de cablagem;
-* perdas e interferências;
-* quantidade de sinais analógicos transportados;
-* complexidade da instalação;
-* quantidade de cablagem necessária.
-
----
-
-# 4. Distribuição do ESP32-S
-
-O Grupo Computacional ESP32-S poderá ser constituído por vários elementos distribuídos pela aeronave.
-
-A quantidade de elementos dependerá principalmente da:
-
-* quantidade de sensores;
-* localização dos sensores;
-* frequência de aquisição;
-* capacidade de processamento necessária;
-* necessidade de separar grupos de sensores;
-* configuração específica da aeronave.
-
-Exemplo conceptual:
+## 3.2 Mapa físico de referência (asa fixa convencional)
 
 ```text
-                  FRENTE
-                    ▲
-                    │
+                          NARIZ
+                            ▲
+                            │
+              ┌─────────────┼──────────────┐
+              │ COMPUTE-SENSORIAL_01       │
+              │ (Pitot, estática, TAT)     │
+              └─────────────┼──────────────┘
+                            │
+   ┌──────────────────┬─────┴──────┬──────────────────┐
+   │ ASA ESQUERDA     │  BAÍA      │ ASA DIREITA      │
+   │ SENSORIAL_02     │  CENTRAL   │ SENSORIAL_03     │
+   │ (IMU, mag)       │            │ (IMU, mag)       │
+   │ ACTUATOR_SUP     │  FLIGHT-   │ ACTUATOR_SUP     │
+   │ (aileron)        │  CLUSTER   │ (aileron)        │
+   │                  │  (Master   │                  │
+   │                  │   Geral)   │                  │
+   │                  │            │                  │
+   │                  │  VISION-   │                  │
+   │                  │  CARRIER   │                  │
+   │                  │  (GCV)     │                  │
+   └──────────────────┴─────┬──────┴──────────────────┘
+                            │
+              ┌─────────────┼──────────────┐
+              │ SENSORIAL_04 / FAILSAFE    │
+              │ (GPS, baro reserva)        │
+              │ ACTUATOR_CAuda             │
+              │ (profundor, leme, motor)   │
+              └─────────────┼──────────────┘
+                            ▼
+                          CAUDA
 
-             [ESP32-S_01]
-              Sensores dianteiros
-
-                    │
-
-        ┌───────────┴───────────┐
-
- [ESP32-S_02]             [ESP32-S_03]
- Sensores esquerdo         Sensores direito
-
-        └───────────┬───────────┘
-
-             [ESP32-S_04]
-              Sensores traseiros
-
-                    │
-                    ▼
-                   CAUDA
+Antenas:
+  5,8 GHz TX (vídeo) ─ bordo superior, plano de massa livre, afastada de GPS
+  2,4 GHz RX         ─ ventre ou lateral, diversidade quando possível
+  868 MHz            ─ cauda ou ventre, afastada de eletrónica sensível
 ```
 
-A distribuição acima é apenas conceptual e não representa uma configuração obrigatória.
+Este mapa é conceptual. A posição exata depende da célula, do centro de gravidade, da aerodinâmica e do diagrama de radiação.
 
----
+## 3.3 Onde vive cada PCB
 
-# 5. Distribuição do ESP32-A
+| PCB | Localização recomendada | Justificação |
+| --- | --- | --- |
+| COMPUTE-SENSORIAL (RP2040) | Junto ao conjunto de sensores que serve (nariz para pressões, asas para IMU/magnetómetro, cauda para baro/GPS auxiliar) | Ligações analógicas e digitais curtas; digitalização precoce |
+| COMPUTE-ACTUATOR (RP2040/RP2350) | Junto ao atuador ou ao controlador (servo, ESC) | PWM e potência curtos; retorno (feedback) curto; menos queda de tensão |
+| COMPUTE-NODE Master Sensorial (RP2350B) | Baía central ou a meio do feixe CAN-Principal | Agrega sem alongar o barramento; facilita terminação |
+| COMPUTE-FLIGHT-CLUSTER (Master Geral) | Baía central, sobre amortecedores de vibração, com arrefecimento e acesso para manutenção | Protege os 8 núcleos; minimiza comprimento médio do CAN-Principal e dos RJ45 para 2,4 GHz/868 MHz |
+| COMPUTE-VISION-CARRIER (GCV) | Baía dianteira/central com vista curta para a câmara, ventilação e blindagem | MIPI CSI exige FFC curto (ver HW-004/HW-007); i.MX exige arrefecimento; RJ45 para 5,8 GHz curto |
+| COMM-RF 5,8 GHz | Junto à antena de 5,8 GHz, com plano de massa e dissipação | Minimiza perdas coaxiais a 5,8 GHz; RJ45-RS vindo do GCV |
+| COMM-RF 2,4 GHz / 868 MHz | Junto às respetivas antenas, separadas entre si e do GPS | Evita dessensibilização; RJ45-RS vindos do Master Geral |
+| Nós FailSafe distribuídos (COMPUTE-NODE) | Fisicamente separados da baía central (ex.: cauda), com alimentação e sensores próprios | Sobrevivem a falha localizada na baía central |
 
-O Grupo Computacional ESP32-A poderá igualmente ser constituído por vários elementos.
+## 3.4 Separação física dos domínios
 
-A distribuição deverá considerar principalmente:
+A separação não exige grandes distâncias; exige que uma falha localizada (curto, água, calor, impacto, interferência) não inutilize em simultâneo domínios que devem permanecer independentes.
 
-* localização dos atuadores;
-* quantidade de atuadores;
-* requisitos de resposta;
-* quantidade de sinais;
-* necessidade de *feedback*;
-* características elétricas das interfaces.
+Critérios a aplicar em cada instalação:
 
-A proximidade dos elementos ESP32-A aos atuadores poderá reduzir o comprimento das ligações de controlo.
+| Domínio | Separar de | Como |
+| --- | --- | --- |
+| FailSafe/Supervisão | Voo/Missão normal | Posição distinta, alimentação com derivação protegida independente, sensores de reserva próprios, feixe CAN com encaminhamento distinto |
+| Master Geral | Potência de propulsão | Compartimento blindado, massa estrela, feixes separados, filtragem |
+| GCV (i.MX) | Recetores GPS e 868 MHz | Distância, blindagem, planos de massa contínuos, filtragem da alimentação comutada |
+| Rádios TX (5,8 GHz) | GPS e magnetómetros | Distância máxima praticável, orientação de antenas, ensaios de dessensibilização |
+| Potência (ESC, motores) | Barramento CAN e sensores analógicos | Feixes entrançados e afastados, toroides quando necessário, massa de potência separada até ponto único |
 
----
+## 3.5 Cablagem e fichas
 
-# 6. Distribuição do ESP32-FS
-
-O Grupo Computacional ESP32-FS deverá possuir uma distribuição física que preserve a sua independência relativamente aos restantes domínios.
-
-A localização dos elementos deverá considerar:
-
-* proteção física;
-* alimentação;
-* disponibilidade dos dados necessários;
-* resistência a falhas locais;
-* acessibilidade para manutenção;
-* isolamento relativamente a potenciais fontes de falha.
-
-Quando o grupo possuir vários elementos, a distribuição deverá ser definida de forma a não criar uma dependência desnecessária de um único ponto físico.
-
----
-
-# 7. Distribuição do ESP32-FS_A
-
-O Grupo Computacional ESP32-FS_A deverá ser instalado de forma a permitir o acesso físico aos atuadores que possam ser utilizados durante uma situação de emergência.
-
-A sua localização deverá minimizar o caminho entre:
+* **CAN-Principal (R1):** par trançado com blindagem, terminação de 120 Ω nas extremidades, derivação curta (stub) para cada nó. Topologia em barramento, sem estrela improvisada.
+* **RJ45-RS para COMM-RF:** cabo de 8 vias standard com pares dedicados a dados série, alimentação e sinalização de presença; ficha RJ45 com trava; identificação por cor/etiqueta por banda (5,8 GHz, 2,4 GHz, 868 MHz).
+* **Alimentação 12/5/3,3 V:** feixe de potência separado do feixe de sinal; bitola por corrente de pico (não média); proteção por derivação.
+* **MIPI CSI:** FFC curto, impedância controlada, sem vias desnecessárias, afastado de comutação (ver HW-004; valores por definir).
+* **Massa:** topologia em estrela por baía, ponto único de interligação, sem laços entre potência e sinal.
 
 ```text
-ESP32-FS_A
-     │
-     ├── Ailerons / Elevons
-     ├── Leme
-     ├── Motor(es)
-     └── Outros atuadores de emergência
+Sensor ──curto──► COMPUTE-SENSORIAL ══CAN digital══► Master Geral
+Atuador ─curto──► COMPUTE-ACTUATOR  ══CAN digital══► Master Geral
+Câmara ──FFC curto──► GCV ══RJ45──► COMM-RF 5,8 GHz ──► AR
+Master Geral ══RJ45──► COMM-RF 2,4 GHz / 868 MHz ──► AR
 ```
 
-A seleção definitiva dos atuadores sob responsabilidade do ESP32-FS_A ainda não está concluída.
+## 3.6 Ambiente mecânico, térmico e EMC
 
-Consequentemente, a distribuição física definitiva deste grupo deverá permanecer configurável.
+Cada instalação deve verificar: vibração (amortecedores do cluster e do GCV), temperatura (dissipadores do i.MX e dos reguladores, circulação de ar, limites da baía), humidade e poeira (conformal coating e vedação onde aplicável), compatibilidade eletromagnética (blindagem da baía central, filtros, ensaios de emissão/suscetibilidade — estratégia por definir em HW-008).
 
----
+## 3.7 Manutenção e modularidade
 
-# 8. Distribuição do RaspberryPi
-
-O Grupo Computacional RaspberryPi deverá ser instalado numa posição que permita:
-
-* acesso aos restantes domínios;
-* adequada alimentação;
-* proteção contra vibração;
-* proteção térmica;
-* manutenção;
-* acesso físico para configuração;
-* integração com os restantes sistemas da aeronave.
-
-A arquitetura não pressupõe que exista apenas um elemento físico RaspberryPi.
-
-Quando existirem vários elementos, a sua distribuição deverá ser determinada de acordo com a arquitetura computacional da aeronave.
+Cada elemento deve poder ser substituído sem desmontar a aeronave: fichas com polarização mecânica, etiquetas com grupo/elemento/versão, pontos de teste acessíveis, fixação anti-vibração com ferramenta simples. A configuração física (que elemento serve que sensor/atuador) é registada na configuração pré-compilação (HW-009).
 
 ---
 
-# 9. Separação Física dos Domínios
+# 4. Exemplos
 
-A distribuição física deverá procurar preservar a separação entre os diferentes domínios computacionais.
-
-A separação não implica necessariamente distância física elevada.
-
-O objetivo é evitar que uma falha física localizada afete simultaneamente vários domínios que deveriam permanecer funcionalmente independentes.
-
-Deverão ser considerados, conforme aplicável:
-
-* alimentação;
-* cablagem;
-* proteção mecânica;
-* temperatura;
-* vibração;
-* humidade;
-* interferência eletromagnética;
-* acessibilidade;
-* manutenção.
-
----
-
-# 10. Separação do Domínio de Segurança
-
-O ESP32-FS e os elementos associados ao domínio de segurança deverão possuir condições físicas adequadas à preservação da sua função mesmo perante falhas nos sistemas de operação normal.
-
-A distribuição deverá evitar que uma única falha física previsível inutilize simultaneamente:
-
-* ESP32-FS;
-* RaspberryPi;
-* ESP32-A;
-* ESP32-S.
-
-Os mecanismos específicos de isolamento e redundância serão definidos em `HW-008`.
-
----
-
-# 11. Distribuição de Sensores
-
-Na configuração atual, os sensores são ligados diretamente ao Grupo Computacional ESP32-S.
-
-A distribuição dos elementos ESP32-S deverá, portanto, acompanhar a distribuição dos sensores sempre que isso apresentar vantagens técnicas.
-
-Poderão existir elementos ESP32-S em diferentes regiões da aeronave.
-
-A arquitetura deverá permitir que diferentes elementos executem aquisições com frequências diferentes, de acordo com os requisitos dos sensores associados.
-
----
-
-# 12. Distribuição de Atuadores
-
-Os atuadores da operação normal são associados ao Grupo Computacional ESP32-A.
-
-A distribuição física dos elementos ESP32-A poderá acompanhar a distribuição dos atuadores.
-
-O objetivo é evitar que um único elemento tenha obrigatoriamente de controlar todos os atuadores da aeronave quando uma distribuição física diferente for mais adequada.
-
-O *feedback* dos atuadores deverá igualmente ser considerado na distribuição.
-
----
-
-# 13. Cablagem
-
-A distribuição dos elementos deverá procurar minimizar cablagens desnecessariamente longas.
-
-Deverá ser dada preferência, sempre que tecnicamente adequada, à aproximação entre:
+## Exemplo 1 — Nariz com pressões
 
 ```text
-Sensor ───── ESP32-S
-Atuador ──── ESP32-A
+Pitot + estática + temperatura ─(tubos curtos + fios curtos)─►
+COMPUTE-SENSORIAL_01 (RP2040) no nariz ─(CAN-Principal)─► Master Geral
 ```
 
-em vez de concentrar todos os elementos num único ponto.
+Vantagem: sinais de pressão e temperatura digitalizados a centímetros da tomada; apenas um par trançado digital percorre a fuselagem.
 
-A definição dos tipos de cablagem, conectores, níveis elétricos e características das interfaces pertence a `HW-004` e `HW-006`.
-
----
-
-# 14. Comunicação entre Elementos Distribuídos
-
-A distribuição física dos elementos deverá considerar a necessidade de comunicação entre diferentes grupos e elementos.
-
-A comunicação entre hardware será realizada através das interfaces definidas na arquitetura de comunicação.
-
-A topologia concreta das ligações entre:
-
-* ESP32-S;
-* ESP32-A;
-* ESP32-FS;
-* ESP32-FS_A;
-* RaspberryPi;
-
-não é estabelecida neste documento.
-
-A topologia deverá ser definida posteriormente de acordo com os requisitos de comunicação, segurança e isolamento.
-
----
-
-# 15. Distribuição em Função da Aeronave
-
-A distribuição física não deverá ser fixa para todas as aeronaves.
-
-Uma aeronave poderá utilizar:
+## Exemplo 2 — Asa com servo e IMU
 
 ```text
-ESP32-S → 1 elemento
-ESP32-A → 1 elemento
+IMU da asa esquerda ─(SPI curto)─► SENSORIAL_02
+Servo do aileron esquerdo ─(PWM curto)─► ACTUATOR_ASA_ESQ (RP2040)
+Ambos ─(CAN-Principal comum na asa)─► baía central
 ```
 
-enquanto outra poderá utilizar:
+## Exemplo 3 — Separação FailSafe
 
 ```text
-ESP32-S → vários elementos
-ESP32-A → vários elementos
+Baía central: Master Geral + GCV + SENSORIAL principal
+Cauda: COMPUTE-NODE FailSafe + GPS/IMU/barómetro de reserva + alimentação protegida
+Qualquer incidente na baía central (curto, sobreaquecimento) preserva
+a capacidade mínima de supervisão e de atuação de emergência.
 ```
 
-sem alterar a definição lógica dos respetivos grupos computacionais.
+---
+
+# 5. Interfaces
+
+| Interface física | Percurso | Documento de detalhe |
+| --- | --- | --- |
+| CAN-Principal | Todos os nós em barramento com stubs curtos | HW-004, HW-006 |
+| RJ45-RS 5,8 GHz | GCV → COMM-RF 5,8 GHz | HW-004, HW-006, HW-007 |
+| RJ45-RS 2,4 GHz / 868 MHz | Master Geral → COMM-RF respetivas | HW-004, HW-006, HW-007 |
+| MIPI CSI FFC | Câmara → COMPUTE-VISION-CARRIER | HW-004, HW-007 |
+| Alimentação 12/5/3,3 V | Fonte → distribuição → cada PCB | HW-005 |
+| Massas e blindagens | Estrela por baía, ponto único | HW-004, HW-008 |
 
 ---
 
-# 16. Configuração Específica
+# 6. Pontos em aberto
 
-A configuração física de uma aeronave deverá definir, pelo menos:
-
-* quantidade de elementos de cada grupo;
-* localização aproximada;
-* periféricos associados;
-* interfaces utilizadas;
-* alimentação;
-* ligações físicas;
-* elementos opcionais;
-* requisitos particulares da instalação.
-
-A configuração deverá ser específica para cada modelo de aeronave.
+| # | Ponto em aberto | Resolução |
+| --- | --- | --- |
+| 1 | Posições definitivas por modelo de aeronave (plantas de baías, centros de gravidade, antenas) | HW-009 + projeto da célula |
+| 2 | Suportes anti-vibração do cluster e do GCV (curvas de transmissibilidade) | Ensaio mecânico |
+| 3 | Solução térmica da baía central com i.MX + 4 × RP2350 + reguladores (dissipadores, ar, limites) | HW-005 + ensaio térmico |
+| 4 | Encaminhamento do CAN-Principal por modelo (comprimentos, stubs, terminações) | HW-006 |
+| 5 | Estratégia EMC/EMI completa (blindagem, filtros, ensaios) | HW-008 |
+| 6 | Etiquetagem, pontos de teste e tempo médio de substituição por elemento | Documentação de manutenção |
 
 ---
 
-# 17. Modularidade
+# 7. Referências
 
-A distribuição física deverá favorecer uma arquitetura modular.
-
-A substituição de um elemento deverá ser possível sem exigir alterações desnecessárias nos restantes elementos.
-
-Sempre que possível, sensores, atuadores e elementos computacionais deverão poder ser substituídos ou reposicionados através de interfaces previamente definidas.
-
----
-
-# 18. Manutenção
-
-A instalação deverá permitir manutenção, inspeção e substituição dos elementos.
-
-Deverão ser considerados:
-
-* acesso físico;
-* identificação dos elementos;
-* identificação das ligações;
-* possibilidade de desconexão;
-* proteção contra ligação incorreta;
-* inspeção visual;
-* substituição de componentes.
-
-Os procedimentos de manutenção propriamente ditos serão definidos na documentação operacional e de manutenção aplicável.
-
----
-
-# 19. Expansão
-
-A distribuição física deverá permitir futuras alterações da arquitetura.
-
-Deverá ser possível, quando previsto no projeto da aeronave, adicionar:
-
-* elementos ESP32-S;
-* elementos ESP32-A;
-* novos periféricos;
-* novos grupos computacionais;
-* redundâncias adicionais.
-
-A expansão não deverá exigir a reconstrução completa da arquitetura física.
-
----
-
-# 20. Restrições
-
-A distribuição física não deverá:
-
-* obrigar à concentração de todos os elementos num único local;
-* assumir que um Grupo Computacional possui apenas um elemento;
-* definir uma topologia de comunicação ainda não aprovada;
-* transformar uma ligação física numa relação de autoridade;
-* introduzir dependências funcionais desnecessárias;
-* comprometer a independência do domínio ESP32-FS.
-
----
-
-# 21. Limites do Documento
-
-Este documento define os princípios de distribuição física.
-
-Não define detalhadamente:
-
-* pinout;
-* conectores;
-* tensões;
-* correntes;
-* proteção elétrica;
-* alimentação;
-* protocolo de comunicação;
-* sensores específicos;
-* atuadores específicos;
-* algoritmos;
-* regras de segurança;
-* requisitos estruturais da aeronave.
-
-Esses elementos pertencem às respetivas especificações.
-
----
-
-# 22. Referências
-
-- HW-001 — Arquitetura_de_Hardware
-- HW-002 — Grupos_Computacionais
-- HW-004 — Interfaces_Eletricas
-- HW-005 — Alimentacao_e_Distribuicao_de_Energia
-- HW-006 — Interfaces_de_Comunicacao
-- HW-007 — Interfaces_de_Perifericos
-- HW-008 — Redundancia_e_Isolamento_de_Hardware
-- HW-009 — Expansibilidade_e_Configuracao_de_Hardware
-- SEN — Especificações de Sensores
-- ACT — Especificações de Atuadores
-- SEC — Especificações de Segurança
+* HW-001 — Arquitetura de Hardware
+* HW-002 — Grupos Computacionais
+* HW-004 — Interfaces Elétricas
+* HW-005 — Alimentação e Distribuição de Energia
+* HW-006 — Interfaces de Comunicação
+* HW-007 — Interfaces de Periféricos
+* HW-008 — Redundância e Isolamento de Hardware
+* HW-009 — Expansibilidade e Configuração de Hardware

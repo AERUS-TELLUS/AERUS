@@ -1,526 +1,286 @@
-# HW-002 — Grupos_Computacionais
+# HW-002 — Grupos Computacionais
 
-| Campo             | Valor                     |
-| ----------------- | ------------------------- |
-| **Código**        | HW-002                    |
-| **Título**        | Grupos Computacionais     |
-| **Versão**        | 1.0                       |
-| **Estado**        | Em Desenvolvimento        |
-| **Autor**         | ShegaPT                   |
+| Campo | Valor |
+| --- | --- |
+| **Código** | HW-002 |
+| **Título** | Grupos Computacionais |
+| **Versão** | 2.0 |
+| **Estado** | Em Desenvolvimento |
+| **Autor** | ShegaPT |
 | **Classificação** | Especificação de Hardware |
+| **Referência** | docs/Esquemas/Arquitetura-Computacional.md |
 
 ---
 
 # 1. Objetivo
 
-O presente documento define o conceito de Grupo Computacional utilizado na arquitetura de hardware do Aerus e estabelece as responsabilidades e características dos grupos computacionais que constituem a arquitetura inicial do sistema.
+O presente documento define o conceito de Grupo Computacional e descreve, de forma detalhada e explicativa, os nove grupos oficiais do sistema AERUS-TELLUS: Sensorial, Atuador, Controlo de Voo, Navegação, Missão, Cálculo, FailSafe/Supervisão, Visão (GCV) e Comunicação.
 
-O conceito de Grupo Computacional permite separar uma responsabilidade lógica do hardware físico que a executa.
-
-Um grupo poderá ser constituído por um ou vários elementos computacionais, dependendo das necessidades da aeronave e da distribuição dos respetivos periféricos.
+Explica o que distingue um grupo lógico de uma placa física, que processador (RP2040, RP2350B/2354B ou i.MX 8M Plus) serve cada grupo, como os grupos se relacionam em autoridade e em fluxo de dados e que exemplos concretos ilustram o funcionamento quotidiano de cada um.
 
 ---
 
-# 2. Conceito de Grupo Computacional
+# 2. Âmbito
 
-Um Grupo Computacional é uma unidade lógica e funcional da arquitetura do Aerus constituída por um ou mais elementos computacionais que partilham uma responsabilidade arquitetónica comum.
+Abrange:
 
-O Grupo Computacional não corresponde obrigatoriamente a:
+* conceito de Grupo Computacional e de elemento físico;
+* os nove grupos oficiais, com função, responsabilidades, processador e placa;
+* quadro comparativo RP2040 / RP2350 / i.MX 8M Plus aplicado aos grupos;
+* hierarquia de autoridade e fluxos normais de informação;
+* biblioteca matemática por domínio e gestão de recursos.
 
-* um processador;
-* um microcontrolador;
-* uma placa;
-* um computador;
-* uma localização física única.
+Não abrange:
 
-A quantidade de elementos físicos pertencentes a um grupo depende da configuração concreta da aeronave.
+* distribuição física na célula (ver HW-003);
+* detalhe elétrico e de fichas (ver HW-004);
+* energia (ver HW-005);
+* protocolo e redes (ver HW-006);
+* periféricos concretos (ver HW-007, SEN, ACT).
 
 ---
 
-# 3. Elementos de um Grupo
+# 3. Descrição
 
-Um grupo poderá possuir um único elemento ou vários elementos.
+## 3.1 Conceito de Grupo Computacional
 
-Exemplo:
+Um Grupo Computacional é uma **unidade lógica e funcional** constituída por um ou mais elementos computacionais que partilham a mesma responsabilidade arquitetónica.
 
 ```text
-ESP32-S
+Grupo Computacional (lógica: responsabilidade + autoridade + interfaces)
+  │
+  ├── Elemento físico 01 (PCB + firmware + periféricos)
+  ├── Elemento físico 02
+  └── Elemento físico 03
+```
+
+Um grupo não corresponde obrigatoriamente a um processador, a uma placa ou a um ponto físico único. A quantidade de elementos depende da aeronave: número de sensores, localização de atuadores, frequências, redundância e massa disponível.
+
+Exemplo para o Grupo Sensorial:
+
+```text
+Grupo Computacional Sensorial
 │
-├── Elemento 01
-├── Elemento 02
-├── Elemento 03
-└── Elemento 04
+├── COMPUTE-SENSORIAL_01 (RP2040, sensores do nariz)
+├── COMPUTE-SENSORIAL_02 (RP2040, sensores da asa esquerda)
+├── COMPUTE-SENSORIAL_03 (RP2040, sensores da asa direita)
+└── COMPUTE-NODE_SENS_MASTER (RP2350B, Master do grupo, fusão local)
 ```
 
-Todos os elementos pertencem ao mesmo domínio funcional, mas poderão possuir diferentes periféricos associados.
+## 3.2 Quadro geral dos nove grupos
 
-A distribuição deverá ser determinada de acordo com:
+| Grupo oficial | Responsabilidade nuclear | Processador | PCB | Observações |
+| --- | --- | --- | --- | --- |
+| 1. Sensorial | Aquisição, filtragem, calibração, normalização, validação e publicação | RP2040 nos nós; RP2350B no Master do grupo | COMPUTE-SENSORIAL + COMPUTE-NODE | Nós junto aos sensores; Master agrega e publica no CAN-Principal |
+| 2. Atuador | Validação, conversão, comando PWM/GPIO/série, leitura de retorno, publicação de estado | RP2040 (simples); RP2350B (conjuntos exigentes) | COMPUTE-ACTUATOR | Nunca aceita ordem direta da Missão sem validação do Voo |
+| 3. Controlo de Voo | Leis de controlo, estabilização, envelope, modos de voo | RP2350, núcleo dedicado no Master Geral | COMPUTE-FLIGHT-CLUSTER | Autoridade técnica sobre o Atuador em operação normal |
+| 4. Navegação | Estimação de posição, velocidade, atitude, altitude; fusão com dados sensoriais | RP2350, núcleo dedicado no Master Geral | COMPUTE-FLIGHT-CLUSTER | Serve Voo e Missão; não comanda atuadores diretamente |
+| 5. Missão | Plano de missão, fases, planeamento, gestão de carga útil e de implementos | 2 × núcleos RP2350 no Master Geral | COMPUTE-FLIGHT-CLUSTER | Propõe; não impõe. O Voo valida |
+| 6. Cálculo | Serviço matemático especializado (álgebra, filtros, geodesia, otimização) para os restantes núcleos | RP2350, núcleo/serviço dedicado | COMPUTE-FLIGHT-CLUSTER | Exposto por IPC/RPC; evita duplicar matemática em cada núcleo |
+| 7. FailSafe/Supervisão | Monitorização independente, deteção de falhas, decisão de emergência, inibição, atuação mínima | RP2350 supervisor no cluster + nós COMPUTE-NODE distribuídos | COMPUTE-FLIGHT-CLUSTER + COMPUTE-NODE | Maior autoridade hierárquica; avalia e pode recusar pedidos da Missão |
+| 8. Visão — GCV | Aquisição MIPI, ISP, vídeo 720p60/720p30, GPU, NPU (futura), telemetria de visão | i.MX 8M Plus MIMX8ML4DVNLZAB + Router RP2350 | COMPUTE-VISION-CARRIER | Nunca publica píxeis no CAN-Principal; apenas metadados e estado |
+| 9. Comunicação | Gestão das placas rádio 5,8 GHz / 2,4 GHz / 868 MHz via RJ45-RS, encaminhamento, diagnóstico externo | RP2350 (gestão) + RP2040 (adaptadores quando simples) | COMPUTE-NODE + COMM-RF | Master Geral gere R5; GCV gere R4 |
 
-* quantidade de periféricos;
-* localização física;
-* requisitos temporais;
-* capacidade de processamento;
-* necessidades de comunicação;
-* requisitos de redundância;
-* características da aeronave.
+## 3.3 Características dos processadores aplicadas aos grupos
 
----
+| Característica | RP2040 — nós Sensorial/Atuador/Comunicação simples | RP2350B/2354B — Masters, cluster, FailSafe, Router | i.MX 8M Plus — GCV |
+| --- | --- | --- | --- |
+| Núcleos | 2 × Cortex-M0+ a 133 MHz | 2 × Cortex-M33 a 150 MHz, FPU, DSP, TrustZone, SHA-256 | 4 × Cortex-A53 + Cortex-M7 + GPU + ISP + NPU + VPU |
+| Memória | 264 KB SRAM; Flash QSPI externa | 520 KB SRAM; Flash QSPI ou 2 MB empilhados (RP2354B); PSRAM expansível | LPDDR externa + eMMC; dimensionamento por definir |
+| GPIO / PWM / ADC / PIO | 30 GPIO, 4 ADC, 16 PWM, 8 PIO | 48 GPIO, 8 ADC, 24 PWM, 12 PIO (variante B) | Periféricos de aplicação; MIPI CSI ×2; GbE ×2; CAN-FD ×2 |
+| Interfaces de sistema | UART ×2, SPI ×2, I2C ×2, USB 1.1 | UART ×2, SPI ×2, I2C ×2, USB 1.1 + PIO para CAN/Ethernet via controlador | USB 3.0/2.0, PCIe, SAI, eCSPI, UART, GbE, CAN-FD nativos |
+| Segurança | Watchdog, arranque simples | TrustZone, arranque seguro, SHA-256, watchdog com janela | TrustZone, arranque seguro, watchdog do SoC + watchdog externo do Router |
+| Papel típico | Ler um sensor e publicar valor normalizado; gerar um PWM verificado | Coordenar um grupo; fundir sensores; navegar; controlar; supervisionar | Ver, codificar, inferir, registar |
 
-# 4. Grupos Computacionais Obrigatórios
+A regra de escolha é funcional: usa-se o processador mais simples que cumpra com margem os requisitos temporais, de memória e de interfaces. O RP2350B/2354B é obrigatório sempre que exista FPU/DSP intensivo, TrustZone, mais de 30 GPIO ou coordenação de grupo.
 
-A arquitetura inicial do Aerus define cinco grupos computacionais obrigatórios:
+## 3.4 Os nove grupos em detalhe
+
+### 3.4.1 Grupo Computacional Sensorial
+
+Função: transformar sinais elétricos heterogéneos em grandezas físicas normalizadas, validadas e datadas.
+
+Responsabilidades: aquisição (ADC, SPI, I2C, UART, PIO), filtragem, calibração, conversão de unidades, validação de gama e de coerência, agregação por elemento, publicação no CAN-Principal, sinalização de qualidade (válido, degradado, inválido, sem resposta).
+
+Estrutura: N nós COMPUTE-SENSORIAL (RP2040) junto aos sensores + um Master COMPUTE-NODE (RP2350B) quando o volume justificar. Cada nó cumpre as frequências dos seus periféricos sem depender do Master para amostrar.
+
+### 3.4.2 Grupo Computacional Atuador
+
+Função: transformar comandos normalizados em sinais físicos seguros e devolver o estado real.
+
+Responsabilidades: receção do CAN-Principal, verificação de validade e de limites, conversão para PWM/GPIO/série, comando do andar de potência ou do controlador do atuador (incluindo ESC de motores), leitura de retorno (posição, rotação, corrente, temperatura, estado do controlador), publicação de estado, aplicação de estado seguro em arranque, falha ou inibição FailSafe.
+
+Variantes COMPUTE-ACTUATOR: versão RP2040 para servos e saídas simples; versão RP2350B para conjuntos com cinemática, múltiplos PWM sincronizados, diagnóstico pesado ou TrustZone.
+
+### 3.4.3 Grupo Computacional de Controlo de Voo
+
+Função: manter a aeronave dentro do envelope e executar os comandos validados.
+
+Vive num núcleo dedicado do Master Geral (COMPUTE-FLIGHT-CLUSTER). Consome fusão sensorial e navegação, aplica leis de controlo, impõe limites, gera comandos para o Grupo Atuador e publica estado de voo. É a única entidade que pode validar comandos com destino aos atuadores em operação normal.
+
+### 3.4.4 Grupo Computacional de Navegação
+
+Função: estimar onde a aeronave está, para onde vai e com que atitude e energia.
+
+Vive em núcleo dedicado do Master Geral. Consome sensores normalizados e fusão, executa filtros e geodesia (com recurso ao Grupo de Cálculo para operações pesadas), publica posição, velocidade, atitude, altitude e incertezas. Serve Voo, Missão e FailSafe.
+
+### 3.4.5 Grupo Computacional de Missão
+
+Função: gerir o plano — fases, waypoints, carga útil, implementos, decisões de missão.
+
+Ocupa dois núcleos do Master Geral (gestão + planeamento/lógica). Publica intenções e pedidos (nunca ordens diretas aos atuadores). O Controlo de Voo e o FailSafe validam cada pedido face ao envelope e à segurança.
+
+### 3.4.6 Grupo Computacional de Cálculo
+
+Função: serviço matemático partilhado do cluster.
+
+Exemplo de chamada entre núcleos (IPC/RPC):
 
 ```text
-RaspberryPi
-ESP32-S
-ESP32-A
-ESP32-FS
-ESP32-FS_A
+Núcleo de Missão
+  │ MATH_REQUEST (matriz, filtro, geodesia)
+  ▼
+Núcleo de Cálculo — executa com FPU/DSP
+  │ MATH_RESPONSE + tempo + estado
+  ▼
+Núcleo de Missão — prossegue
 ```
 
-Estes grupos representam as responsabilidades mínimas atualmente definidas para o sistema.
+Evita que cada núcleo reimplemente a mesma matemática e facilita ensaio e certificação.
 
-A arquitetura não impede a introdução futura de novos grupos computacionais.
+### 3.4.7 Grupo Computacional FailSafe/Supervisão
 
----
+Função: proteger pessoas, bens e aeronave, mesmo contra o próprio sistema normal.
 
-# 5. Grupo Computacional RaspberryPi
+É o grupo de maior autoridade hierárquica. Monitoriza heartbeats, latências, CRC/HMAC, coerência de dados e watchdogs; avalia pedidos da Missão e do Voo; pode inibir o Atuador normal e ordenar atuação mínima de emergência; gere sincronização temporal e registo de falhas. Inclui o núcleo supervisor do cluster e nós COMPUTE-NODE distribuídos com sensores de reserva (posição, atitude, altitude, temperatura) de fabricantes, quando possível, distintos dos principais.
 
-## 5.1 Função
-
-O Grupo Computacional RaspberryPi constitui o principal domínio computacional de operação normal do Aerus.
-
-É responsável pela coordenação geral do sistema durante a operação normal e executa os módulos necessários à gestão da missão, processamento e controlo.
-
----
-
-## 5.2 Responsabilidades
-
-Entre as suas responsabilidades encontram-se:
-
-* orquestração do sistema;
-* gestão da missão;
-* processamento de informação;
-* execução dos cálculos atribuídos ao domínio;
-* gestão dos comandos de voo;
-* gestão dos módulos;
-* gestão dos modos dentro das suas competências;
-* comunicação com os restantes grupos;
-* disponibilização de informação à GroundStation;
-* coordenação das funções de operação normal.
-
----
-
-## 5.3 Natureza do Hardware
-
-A designação `RaspberryPi` identifica o Grupo Computacional e não estabelece que o sistema tenha obrigatoriamente de utilizar um Raspberry Pi específico.
-
-O grupo poderá ser constituído por:
-
-* um único computador;
-* vários computadores;
-* uma arquitetura distribuída;
-* um cluster;
-* outro hardware computacional com capacidade adequada.
-
-A alteração do hardware físico não deverá alterar a responsabilidade lógica atribuída ao grupo.
-
----
-
-# 6. Grupo Computacional ESP32-S
-
-## 6.1 Função
-
-O Grupo Computacional ESP32-S é responsável pela aquisição dos dados dos sensores e pelo processamento primário desses dados.
-
----
-
-## 6.2 Estrutura
-
-O ESP32-S poderá ser constituído por um ou vários microcontroladores.
-
-Exemplo:
+Exemplo de decisão independente:
 
 ```text
-ESP32-S
-│
-├── ESP32-S_01
-│   ├── Sensores
-│   └── Aquisição
-│
-├── ESP32-S_02
-│   ├── Sensores
-│   └── Aquisição
-│
-└── ESP32-S_03
-    ├── Sensores
-    └── Aquisição
+Missão → pede emergência / FailSafe avalia sensores + estados + feedback
+  ├── aceita → procedimento de emergência
+  └── recusa → mantém operação normal e regista
 ```
 
-A quantidade de elementos não é fixa.
+### 3.4.8 Grupo Computacional de Visão (GCV)
 
----
+Função: ver, codificar e, no futuro, compreender.
 
-## 6.3 Responsabilidades
+Composição COMPUTE-VISION-CARRIER: módulo com i.MX 8M Plus + LPDDR + eMMC + PMIC NXP + MIPI CSI, sobre carrier com Router RP2350, Ethernet, CAN, Power e System-Connector, mais RJ45 para a placa COMM-RF de 5,8 GHz.
 
-O grupo é responsável por:
+O Router trata de watchdog do SoC, temperatura, estado da câmara e do armazenamento, gestão de energia, arranque, recuperação, telemetria e publicação filtrada no CAN-Principal. O i.MX trata de píxeis. Esta separação é intencional e inegociável.
 
-* aquisição de sensores;
-* conversão de sinais;
-* processamento primário;
-* aplicação dos cálculos necessários ao domínio;
-* validação preliminar;
-* organização dos dados;
-* preparação dos dados para transmissão.
+### 3.4.9 Grupo Computacional de Comunicação
 
-Cada elemento deverá cumprir as necessidades temporais dos periféricos que lhe estejam atribuídos.
+Função: levar e trazer informação entre o veículo e o exterior, sem confundir redes internas com externas.
 
----
+Gestão: Master Geral gere as placas COMM-RF de 2,4 GHz (RX de comando) e 868 MHz (telemetria bidirecional de longo alcance) via RJ45-RS; GCV gere a placa COMM-RF de 5,8 GHz (TX de vídeo 720p30 + telemetria descendente) via RJ45. Nós COMPUTE-NODE tratam de encaminhamento, filas, prioridades e diagnóstico externo (manutenção em terra).
 
-## 6.4 Distribuição Física
+## 3.5 Separação funcional resumida
 
-A utilização de vários elementos permite colocar capacidade de aquisição próxima dos sensores.
+| Grupo | Palavra-chave | Não faz |
+| --- | --- | --- |
+| Sensorial | Medir e normalizar | Controlo, missão, atuação |
+| Atuador | Executar com segurança | Decidir missão ou navegação |
+| Voo | Controlar e validar | Planear missão |
+| Navegação | Estimar | Comandar atuadores |
+| Missão | Planear e pedir | Comandar atuadores diretamente |
+| Cálculo | Servir matemática | Decidir sozinho |
+| FailSafe | Proteger e inibir | Gerir missão normal |
+| Visão | Ver e codificar | Comandar voo |
+| Comunicação | Transportar | Decidir conteúdo operacional |
 
-Esta distribuição poderá reduzir:
+## 3.6 Biblioteca matemática por domínio
 
-* comprimento das ligações;
-* quantidade de cablagem;
-* transporte de sinais analógicos a longa distância;
-* interferências;
-* carga sobre um único microcontrolador.
-
----
-
-# 7. Grupo Computacional ESP32-A
-
-## 7.1 Função
-
-O Grupo Computacional ESP32-A é responsável pela conversão final dos comandos de voo e pelo controlo físico dos atuadores durante a operação normal.
-
----
-
-## 7.2 Estrutura
-
-O grupo poderá ser constituído por um ou vários microcontroladores.
-
-A distribuição dependerá da quantidade, localização e características dos atuadores da aeronave.
-
----
-
-## 7.3 Responsabilidades
-
-O ESP32-A é responsável por:
-
-* receber comandos de controlo do RaspberryPi;
-* processar os comandos recebidos;
-* aplicar as conversões necessárias;
-* controlar os atuadores;
-* obter *feedback* dos atuadores quando disponível;
-* disponibilizar informação sobre o estado dos atuadores.
-
----
-
-## 7.4 Comandos Provenientes do ESP32-FS
-
-O ESP32-A não recebe comandos normais de controlo de voo provenientes do ESP32-FS.
-
-O ESP32-FS apenas poderá enviar ao ESP32-A a ordem necessária para inibir o seu controlo durante uma situação de emergência.
-
-O controlo de emergência dos atuadores é realizado através do Grupo Computacional ESP32-FS_A.
-
----
-
-# 8. Grupo Computacional ESP32-FS
-
-## 8.1 Função
-
-O Grupo Computacional ESP32-FS constitui o domínio computacional de segurança do Aerus.
-
-Possui a maior autoridade hierárquica do sistema.
-
----
-
-## 8.2 Independência
-
-O ESP32-FS executa as suas próprias avaliações de segurança independentemente do RaspberryPi.
-
-Não depende da decisão do RaspberryPi para determinar se uma condição representa uma ameaça à segurança.
-
----
-
-## 8.3 Dados Recebidos
-
-O ESP32-FS poderá receber informação proveniente dos restantes grupos necessária à sua avaliação.
-
-Entre esta informação encontram-se:
-
-* valores dos sensores;
-* resultados preliminares dos cálculos do ESP32-S;
-* *feedback* de posição;
-* *feedback* de rotação;
-* *feedback* dos atuadores;
-* estados relevantes;
-* informação proveniente do RaspberryPi.
-
-A informação recebida deverá ser suficiente para permitir ao ESP32-FS efetuar a sua própria avaliação da condição da aeronave.
-
----
-
-## 8.4 Relação com RaspberryPi
-
-RaspberryPi e ESP32-FS funcionam de forma independente relativamente à avaliação de segurança.
-
-O RaspberryPi poderá solicitar a entrada em condições de FailSafe/FailSecure.
-
-O ESP32-FS deverá avaliar autonomamente a solicitação antes de a aceitar.
-
-Uma solicitação do RaspberryPi não constitui automaticamente uma ordem obrigatória para o ESP32-FS.
-
-O ESP32-FS poderá aceitar ou recusar a solicitação de acordo com os dados disponíveis e as regras de segurança.
-
----
-
-# 9. Grupo Computacional ESP32-FS_A
-
-## 9.1 Função
-
-O Grupo Computacional ESP32-FS_A constitui o domínio físico de atuação associado ao ESP32-FS.
-
-A sua função é permitir ao ESP32-FS controlar o conjunto mínimo de atuadores necessário para uma resposta de emergência.
-
----
-
-## 9.2 Operação
-
-O ESP32-FS_A apenas deverá operar no contexto de FailSafe/FailSecure.
-
-Durante a operação normal, o controlo dos atuadores permanece sob responsabilidade do ESP32-A.
-
----
-
-## 9.3 Comandos
-
-O ESP32-FS_A recebe ordens diretamente do ESP32-FS.
-
-Não executa os cálculos de navegação, controlo ou segurança necessários para determinar a resposta de emergência.
-
-A sua função é executar fisicamente os comandos básicos recebidos.
-
----
-
-## 9.4 Conversão
-
-O ESP32-FS_A poderá converter comandos básicos em sinais físicos apropriados aos atuadores.
-
-Exemplos incluem:
-
-* PWM;
-* sinais digitais;
-* outras interfaces de atuação aplicáveis.
-
-A interface concreta de cada atuador é definida nas especificações correspondentes.
-
----
-
-# 10. Separação Funcional
-
-Os cinco grupos possuem responsabilidades distintas:
-
-| Grupo       | Responsabilidade principal                          |
-| ----------- | --------------------------------------------------- |
-| RaspberryPi | Orquestração e operação normal                      |
-| ESP32-S     | Aquisição e processamento primário                  |
-| ESP32-A     | Processamento final e controlo normal dos atuadores |
-| ESP32-FS    | Segurança e decisão de emergência                   |
-| ESP32-FS_A  | Atuação mínima de emergência                        |
-
-Esta separação não significa que os grupos funcionem isoladamente.
-
-Todos contribuem para o funcionamento global do Aerus.
-
----
-
-# 11. Independência Funcional
-
-Cada grupo deverá possuir autonomia suficiente para executar as funções que lhe são atribuídas sem depender desnecessariamente de outros grupos.
-
-A comunicação entre grupos deverá existir quando necessária à execução das respetivas responsabilidades.
-
-A independência funcional não impede a partilha de informação necessária.
-
----
-
-# 12. Comunicação Interna ao Grupo
-
-Quando um grupo possuir vários elementos físicos, estes deverão funcionar como partes do mesmo domínio funcional.
-
-A distribuição interna deverá permitir:
-
-* partilha dos dados necessários;
-* sincronização;
-* distribuição de tarefas;
-* coordenação;
-* monitorização.
-
-Os mecanismos concretos de comunicação interna serão definidos nas especificações de comunicação e hardware correspondentes.
-
----
-
-# 13. Biblioteca Matemática
-
-Cada domínio computacional que necessite de cálculos matemáticos deverá possuir a sua própria implementação da biblioteca matemática aplicável.
-
-Quando um grupo for constituído por vários elementos computacionais, cada elemento poderá possuir uma cópia da biblioteca correspondente ao domínio.
-
-Exemplo:
+Cada domínio que calcule possui a sua implementação da biblioteca matemática aplicável, distribuída por elemento para evitar dependência central:
 
 ```text
-ESP32-S
-│
-├── ESP32-S_01 → Biblioteca MAT-ESP32-S
-├── ESP32-S_02 → Biblioteca MAT-ESP32-S
-└── ESP32-S_03 → Biblioteca MAT-ESP32-S
+Sensorial_01 → MAT-SENSORIAL (filtros, calibração)
+Sensorial_02 → MAT-SENSORIAL (cópia coerente)
+Cálculo      → MAT-CÁLCULO (álgebra, geodesia, otimização)
+Navegação    → MAT-NAV (filtros de estimação)
+Voo          → MAT-VOO (leis de controlo)
 ```
 
-O objetivo é permitir que cada elemento tenha acesso direto às funções necessárias sem depender de uma biblioteca matemática centralizada.
+A definição das fórmulas pertence a MAT; este documento define apenas o princípio de distribuição.
 
-A definição das fórmulas e da arquitetura matemática é realizada em `MAT/`.
+## 3.7 Gestão de recursos
 
----
-
-# 14. Gestão de Recursos
-
-Cada elemento computacional deverá utilizar os recursos disponíveis de acordo com as necessidades do seu grupo.
-
-Os módulos que não sejam necessários durante determinado modo ou estado poderão ser suspensos ou desativados, permitindo utilizar os recursos computacionais disponíveis para funções prioritárias.
-
-Esta gestão deverá respeitar as políticas definidas para cada módulo.
+Cada elemento utiliza apenas os módulos necessários ao modo e estado correntes. Módulos inativos podem ser suspensos para libertar CPU, memória, barramento e energia, sem comprometer funções necessárias ao estado atual. A política concreta por módulo pertence a SYS e SEC.
 
 ---
 
-# 15. Independência de Modelo
+# 4. Exemplos
 
-Os grupos computacionais deverão ser configuráveis para diferentes modelos de aeronave.
-
-A quantidade de elementos pertencentes a cada grupo poderá variar entre configurações.
-
-Exemplo:
+## Exemplo 1 — Aeronave pequena (configuração mínima)
 
 ```text
-Aeronave A
-
-ESP32-S → 2 elementos
-ESP32-A → 2 elementos
-RaspberryPi → 1 elemento
-
-
-Aeronave B
-
-ESP32-S → 5 elementos
-ESP32-A → 3 elementos
-RaspberryPi → 2 elementos
+Sensorial:  1 × COMPUTE-SENSORIAL + Master acumulado no cluster
+Atuador:    1 × COMPUTE-ACTUATOR (RP2040)
+Cluster:    1 × COMPUTE-FLIGHT-CLUSTER (8 núcleos ativos, alguns em carga reduzida)
+GCV:        1 × COMPUTE-VISION-CARRIER
+Comunicação: placas COMM-RF 5,8 GHz + 2,4 GHz (868 MHz opcional)
 ```
 
-A estrutura lógica dos grupos permanece a mesma.
-
----
-
-# 16. Configuração Pré-Compilação
-
-A configuração específica de uma aeronave deverá ser determinada antes da compilação do Aerus.
-
-A configuração poderá definir:
-
-* quantidade de elementos;
-* distribuição de funções;
-* periféricos existentes;
-* parâmetros;
-* recursos utilizados;
-* características específicas da aeronave.
-
-O objetivo é manter o código parametrizado, evitando a criação de uma implementação completamente independente para cada aeronave.
-
----
-
-# 17. Expansão da Arquitetura
-
-A arquitetura deverá permitir a introdução de novos grupos computacionais quando novas necessidades forem identificadas.
-
-A introdução de um novo grupo deverá definir explicitamente:
-
-* responsabilidade;
-* autoridade;
-* interfaces;
-* dependências;
-* requisitos temporais;
-* requisitos de segurança;
-* relação com os grupos existentes.
-
-A existência futura de novos grupos não invalida os cinco grupos obrigatórios atualmente definidos.
-
----
-
-# 18. Relação com a Arquitetura de Autoridade
-
-A existência de um grupo computacional não determina, por si só, autoridade sobre os restantes grupos.
-
-A autoridade deverá ser determinada pelas regras do sistema.
-
-A arquitetura atual estabelece:
+## Exemplo 2 — Aeronave grande com sensores distribuídos
 
 ```text
-                    ESP32-FS
-                       │
-              ┌────────┴────────┐
-              │                 │
-         RaspberryPi        ESP32-FS_A
-              │
-         ┌────┴────┐
-         │         │
-     ESP32-S     ESP32-A
+Sensorial:  5 × COMPUTE-SENSORIAL (nariz, asas, cauda, trem, Pitot redundante)
+            + 1 × COMPUTE-NODE Master
+Atuador:    3 × COMPUTE-ACTUATOR (superfícies + propulsão + auxiliares)
+Cluster:    1 × COMPUTE-FLIGHT-CLUSTER
+FailSafe distribuído: 1 × COMPUTE-NODE com GPS/IMU/barómetro de reserva
+GCV:        1 × COMPUTE-VISION-CARRIER
+Comunicação: 3 × COMM-RF completas
 ```
 
-Este esquema representa apenas a hierarquia geral de autoridade.
+## Exemplo 3 — Chamada Missão → Cálculo → Voo
 
-Não representa a topologia de comunicação, fluxo de dados ou ligações físicas.
-
----
-
-# 19. Limites do Documento
-
-Este documento não define:
-
-* componentes físicos específicos;
-* modelos de microcontroladores;
-* modelos de computadores;
-* pinouts;
-* alimentação;
-* topologia UART;
-* protocolo TLV;
-* sensores específicos;
-* atuadores específicos;
-* fórmulas matemáticas;
-* algoritmos de controlo;
-* regras de segurança detalhadas.
-
-Esses elementos serão definidos nas respetivas especificações.
+```text
+Missão precisa de distância geodésica e de uma otimização de percurso
+  → IPC MATH_REQUEST ao Cálculo (com REQUEST_ID e TIMESTAMP)
+  → Cálculo responde MATH_RESPONSE + CRC
+  → Missão formula pedido de trajetória ao Voo
+  → Voo valida envelope e publica comando ao Atuador
+  → Atuador executa, lê feedback e publica estado
+```
 
 ---
 
-# 20. Referências
+# 5. Interfaces
 
-- HW-001 — Arquitetura_de_Hardware
-- HW-003 — Distribuicao_de_Hardware
-- HW-004 — Interfaces_Eletricas
-- HW-005 — Alimentacao_e_Distribuicao_de_Energia
-- HW-006 — Interfaces_de_Comunicacao
-- HW-007 — Interfaces_de_Perifericos
-- HW-008 — Redundancia_e_Isolamento_de_Hardware
-- HW-009 — Expansibilidade_e_Configuracao_de_Hardware
-- SYS-002 — Arquitetura_Computacional
-- SYS-005 — Fluxo_Global_de_Informacao
-- SYS-006 — Gestao_de_Estados
-- SYS-007 — Modos_de_Funcionamento
-- MAT — Especificações Matemáticas
-- COM — Especificações de Comunicações
-- SEC — Especificações de Segurança
+| Grupo | Publica (R1 CAN-Principal) | Consome | Redes físicas |
+| --- | --- | --- | --- |
+| Sensorial | Grandezas normalizadas + qualidade + heartbeat | Configuração, sincronismo temporal | R1; nós falam com Master por R1 |
+| Atuador | Estado + feedback + diagnóstico | Comandos validados do Voo; inibição do FailSafe | R1 |
+| Voo / Navegação / Missão / Cálculo | Estados, estimativas, pedidos, respostas matemáticas | Sensores, estados, IPC interno R2 | R2 (interno) + R1 (externo) |
+| FailSafe | Estado de saúde, decisões, inibições | Tudo o necessário à avaliação (sensores, feedback, estados) | R1 + vias dedicadas de emergência (HW-008) |
+| Visão (GCV) | Estado, heartbeat, telemetria compacta, deteções futuras (sem píxeis) | Configuração, sincronismo | R3 interno + R1 via Router + R4 (5,8 GHz) |
+| Comunicação | Encaminhamento, estado dos enlaces, diagnóstico | Mensagens a transportar | R1 + R4/R5 via RJ45-RS |
+
+---
+
+# 6. Pontos em aberto
+
+| # | Ponto em aberto | Resolução |
+| --- | --- | --- |
+| 1 | Distribuição definitiva dos 8 núcleos por carga medida (Voo, Fusão, Navegação, Cálculo, Missão ×2, Supervisão, Diagnóstico) | HW-006, HW-009, ensaios de carga |
+| 2 | Critério objetivo para decidir COMPUTE-ACTUATOR em RP2040 face a RP2350B por atuador | HW-007, ACT |
+| 3 | Necessidade de Master Sensorial dedicado face a Master acumulado no cluster, por classe de aeronave | HW-009 |
+| 4 | Nós FailSafe distribuídos: quantidade, sensores de reserva e diversidade de fabricantes | HW-008, SEN |
+| 5 | Personalidades de firmware do COMPUTE-NODE (Sensorial-Master, Comunicação, FailSafe, Navegação remota) e sua certificação separada | COM, SEC |
+| 6 | Sistema operativo do GCV, pipeline, codecs e formato das deteções NPU publicadas em R1 | HW-006, HW-007 |
+
+---
+
+# 7. Referências
+
+* HW-001 — Arquitetura de Hardware
+* HW-003 — Distribuição de Hardware
+* HW-004 — Interfaces Elétricas
+* HW-005 — Alimentação e Distribuição de Energia
+* HW-006 — Interfaces de Comunicação
+* HW-007 — Interfaces de Periféricos
+* HW-008 — Redundância e Isolamento de Hardware
+* HW-009 — Expansibilidade e Configuração de Hardware
+* docs/Esquemas/Arquitetura-Computacional.md

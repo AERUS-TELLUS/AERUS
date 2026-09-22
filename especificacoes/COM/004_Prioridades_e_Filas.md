@@ -1,556 +1,181 @@
 # COM-004 — Prioridades e Filas
 
-| Campo             | Valor                              |
-| ----------------- | ---------------------------------- |
-| **Código**        | COM-004                            |
-| **Título**        | Prioridades e Filas                |
-| **Versão**        | 1.0                                |
-| **Estado**        | Em Desenvolvimento                 |
-| **Autor**         | ShegaPT                            |
-| **Classificação** | Especificação de Comunicação       |
+| Campo | Valor |
+|---|---|
+| **Código** | COM-004 |
+| **Título** | Prioridades e Filas |
+| **Versão** | 2.0 |
+| **Estado** | Aprovado para implementação |
+| **Autor** | ShegaPT |
+| **Classificação** | Especificação de Comunicação |
 
 ---
 
-# 1. Objetivo
+# 1. Objectivo
 
-O presente documento define as regras de prioridade, gestão de filas e políticas de descarte utilizadas pelo Gestor de Mensagens (`COM-003`) para garantir a entrega adequada de mensagens entre Grupos Computacionais do Aerus.
-
-A gestão de prioridades é implementada em duas camadas complementares: o arbiter hardware do CAN ID e a lógica de aplicação do TLV MSG_ID.
+O presente documento define as prioridades e a gestão de filas **por rede** (CAN-Intra-Grupo, CAN-Principal, CAN-FailSafe, FABRIC, RJ45-Privada RS) e o escalonamento dos **8 núcleos** do Master Geral (4×RP2350). Cada rede possui o seu espaço de prioridades; não existe herança automática entre redes.
 
 ---
 
 # 2. Princípios
 
-* dupla camada de prioridade (CAN ID + TLV MSG_ID);
-* mensagens críticas nunca são descartadas;
-* prevenção de starvation para mensagens de baixa prioridade;
-* dinamismo — prioridade pode mudar conforme o contexto do sistema;
-* determinismo — regras de descarte são previsíveis e testáveis;
-* zero alocações dinâmicas em runtime;
-* todas as regras configuráveis via parâmetros estáticos.
+* Dupla camada nas CAN: arbiter de hardware (CAN-ID) + lógica de aplicação (MSG_ID).
+* CAN-FailSafe permanentemente SUPER_CRITICAL e sem descarte.
+* FABRIC arbitrado por TIPO IPC + núcleo, com preempção de TIME_SYNC e FAULT.
+* RJ45-RS arbitrada por direcção e criticidade, com segmentos isolados (vídeo vs comando/telemetria).
+* Prevenção de inanição (starvation) nas filas descartáveis.
+* Prioridade dinâmica por estado do sistema, decidida pelo Supervisor Cluster no MG.
+* Determinismo: limites por ciclo, capacidades fixas, memória estática.
 
 ---
 
-# 3. Arquitetura de Prioridades
+# 3. Níveis gerais
 
-## 3.1 Camada 1: CAN ID (Arbiter Hardware)
-
-Os 3 bits de prioridade do CAN ID (bits 28-26) determinam quem vence a arbitragem quando vários nodos competem pelo bus simultaneamente:
-
-```text
-┌─────────────────────────────────────────────────────────────┐
-│  CAN ID Extended (29 bits)                                  │
-│                                                             │
-│  PRIORIDADE │ GRUPO_ORIGEM │ GRUPO_DESTINO │ TIPO_MSG       │
-│   (3 bit)   │   (4 bit)    │    (4 bit)    │  (4 bit)       │
-│    28-26    │    25-22     │     21-18     │   17-14        │
-│                                                             │
-│  Bits mais baixos = ID mais baixo = prioridade mais alta    │
-└─────────────────────────────────────────────────────────────┘
-```
-
-**Regra de arbiter:** Quando dois ou mais nodos iniciam transmissão simultaneamente, o nodo com o CAN ID mais baixo vence e continua a transmitir. Os outros nodos aguardam e tentam novamente.
-
-## 3.2 Camada 2: TLV MSG_ID (Lógica de Aplicação)
-
-O MSG_ID do TLV (1 byte, 0x10-0x1F) determina a prioridade de processamento e as regras de descarte no receptor:
-
-```text
-┌─────────────────────────────────────────────────────────────┐
-│  TLV Message                                                │
-│                                                             │
-│  START(0xAA) │ MSG_ID │ COUNT │ FIELDS... │ CRC8            │
-│               │         │       │            │              │
-│               └────┬────┘       └────────────┘              │
-│                    │                                        │
-│         Define prioridade          Define conteúdo          │
-│         de processamento           da mensagem              │
-└─────────────────────────────────────────────────────────────┘
-```
+| Nível | Designação | Significado |
+|---|---|---|
+| 0 | SUPER_CRITICAL | Máxima; nunca descartado onde aplicável |
+| 1 | CRITICAL | Sempre transmitido e processado |
+| 2 | HIGH | Prioritário |
+| 3 | MEDIUM | Normal |
+| 4 | LOW | Pode aguardar |
+| 5 | SUPER_LOW | Descartável |
 
 ---
 
-# 4. Níveis de Prioridade
+# 4. Prioridades por rede
 
-## 4.1 Definição dos Níveis
+## 4.1 CAN-Intra-Grupo (uma instância por grupo)
 
-| Nível | CAN ID Bits | Designação     | Descrição                                 |
-|-------|-------------|----------------|-------------------------------------------|
-| 0     | 000         | SUPER_CRITICAL | Máxima prioridade — nunca descartado      |
-| 1     | 001         | CRITICAL       | Crítico — sempre transmitido e processado |
-| 2     | 010         | HIGH           | Elevada — prioridade no processamento     |
-| 3     | 011         | MEDIUM         | Normal — processamento padrão             |
-| 4     | 100         | LOW            | Baixa — pode ser atrasado                 |
-| 5     | 101         | SUPER_LOW      | Mínima — descartável se necessário        |
+Arbitragem pelo CAN-ID local; mapeamento a partir do MSG_ID:
 
-## 4.2 Diagrama de Prioridades
+| MSG_ID | Prioridade | Notas |
+|---|---|---|
+| MSG_FAILSAFE, MSG_SAFETY_DATA | 0 | Só transitam para o Master se com destino à Principal/FailSafe |
+| MSG_COMMAND, MSG_ACK | 1 | Comando local validado |
+| MSG_HEARTBEAT, MSG_TELEMETRY, MSG_SI_DATA, MSG_STATE_BROADCAST, MSG_ACTUATOR_FB, MSG_SYNC_* | 2 | Periódicos locais |
+| MSG_VIDEO_DESC, MSG_CONFIG | 3 | Descritores e configuração |
+| MSG_SHELL_CMD | 4 | Diagnóstico |
+| MSG_DEBUG | 5 (dinâmica) | Em FAILSAFE pode subir (ver §7) |
 
-```text
-SUPER_CRITICAL (0) ─────── Nunca descartado
-       │                    │
-       │ Processamento      │ Descarte
-       │ imediato           │ proibido
-       ▼                    ▼
-CRITICAL (1) ───────────── Sempre transmitido
-       │
-       │ Sem timeout
-       │ de processamento
-       ▼
-HIGH (2) ───────────────── Prioridade elevada
-       │
-       │ Pode ser atrasado
-       │ mas não descartado
-       ▼                    ▼
-MEDIUM (3) ─────────────── Processamento normal
-       │
-       │ Pode ser descartado
-       │ se fila estiver cheia
-       ▼
-LOW (4) ────────────────── Pode ser atrasado
-       │
-       │ Starvation prevenida
-       │ por counter mínino
-       ▼
-SUPER_LOW (5) ──────────── Descartável
-                           Pode ser eliminado
-                           em qualquer momento
-```
+Filas por instância: SC 8, CR 16, HI 32, ME 32, LO 16, SL 8. Transmissão: fila 0 preemptiva; filas 1–5 com round-robin e limites por ciclo (ILIM/4/8/4/2/1).
 
----
+## 4.2 CAN-Principal (inter-masters)
 
-# 5. Mapeamento MSG_ID → Prioridade
+Apenas Masters + MG + Router GCV. Mapeamento integral:
 
-## 5.1 Tabela Completa
+| MSG_ID | Prioridade | Exigência |
+|---|---|---|
+| MSG_FAILSAFE, MSG_SAFETY_DATA | 0 | ACK obrigatório; sem descarte |
+| MSG_COMMAND, MSG_ACK | 1 | ACK para comando; sem descarte |
+| MSG_HEARTBEAT, MSG_TELEMETRY, MSG_SI_DATA, MSG_STATE_BROADCAST, MSG_ACTUATOR_FB, MSG_SYNC_REQ/RESP | 2 | Sem descarte, com envelhecimento |
+| MSG_VIDEO_DESC, MSG_CONFIG | 3 | Descarte do mais antigo se cheia |
+| MSG_SHELL_CMD | 4 | Descarte do mais antigo; protecção anti-inanição |
+| MSG_DEBUG | 5 | Descartável |
 
-| MSG_ID | Constante           | Prioridade padrão | Descrição                          |
-|--------|---------------------|-------------------|------------------------------------|
-| 0x14   | MSG_FAILSAFE        | SUPER_CRITICAL    | Ativação/desativação FailSafe      |
-| 0x1B   | MSG_SAFETY_DATA     | SUPER_CRITICAL    | Dados de segurança (ESP32-FS only) |
-| 0x12   | MSG_COMMAND         | CRITICAL          | Comandos de controlo               |
-| 0x13   | MSG_ACK             | CRITICAL          | Confirmação de receção             |
-| 0x10   | MSG_HEARTBEAT       | HIGH              | Heartbeat periódico                |
-| 0x11   | MSG_TELEMETRY       | HIGH              | Dados de telemetria                |
-| 0x18   | MSG_SI_DATA         | HIGH              | Dados em unidades SI               |
-| 0x19   | MSG_STATE_BROADCAST | HIGH              | Broadcast de estado                |
-| 0x1A   | MSG_ACTUATOR_FB     | HIGH              | Feedback de atuadores              |
-| 0x16   | MSG_VIDEO           | MEDIUM            | Dados de vídeo                     |
-| 0x17   | MSG_SHELL_CMD       | LOW               | Comando shell remoto               |
-| 0x1C   | MSG_SYNC_REQ        | HIGH              | Pedido de sincronização            |
-| 0x1D   | MSG_SYNC_RESP       | HIGH              | Resposta de sincronização          |
-| 0x1E   | MSG_CONFIG          | MEDIUM            | Dados de configuração              |
-| 0x15   | MSG_DEBUG           | SUPER_LOW         | Debug (prioridade dinâmica)        |
-| 0x1F   | MSG_RESERVED        | MEDIUM            | Reservado                          |
+Exemplo: telemetria G-SEN→MG com prioridade 2 vence contenda contra descritor de vídeo (3) e diagnóstico (4), mas perde contra comando G-CTV→G-ACT (1) e emergência (0).
 
-## 5.2 Prioridade Dinâmica
+## 4.3 CAN-FailSafe (G-FS ←→ AE)
 
-A prioridade de MSG_DEBUG pode ser alterada dinamicamente conforme o estado do sistema:
+| Tráfego | Prioridade | Política |
+|---|---|---|
+| Comando de emergência, confirmação, heartbeat de segurança | 0 (fixa) | **Sem descarte**; fila dimensionada para nunca encher (8 posições, transmissão imediata); qualquer pressão anómala gera FAULT |
 
-```text
-┌─────────────────────────────────────────────────────────────┐
-│  PRIORIDADE DINÂMICA DE MSG_DEBUG                           │
-│                                                             │
-│  Estado NORMAL:       MSG_DEBUG → SUPER_LOW (5)             │
-│  Estado Failsafe:     MSG_DEBUG → SUPER_CRITICAL (0)        │
-│  Estado DEGRADADO:    MSG_DEBUG → HIGH (2)                  │
-│                                                             │
-│  Justificação: em failsafe, informação de debug é crítica   │
-│  para diagnóstico e recuperação.                            │
-└─────────────────────────────────────────────────────────────┘
-```
+Não existem níveis 1–5 nesta rede. É proibido multiplexar tráfego ordinário na CAN-FailSafe.
+
+## 4.4 FABRIC (intra-cluster, 8 núcleos)
+
+Arbitragem por TIPO, depois por núcleo:
+
+| TIPO IPC | Prioridade FABRIC | Comportamento |
+|---|---|---|
+| FAULT, TIME_SYNC | 0 (preemptivo) | Interrompe cálculo em curso no núcleo destino |
+| HEALTH_STATUS, SYSTEM_STATUS, HEARTBEAT | 1 | Entrega no ciclo seguinte |
+| SENSOR_DATA, NAVIGATION_REQ/RESP | 2 | Fluxo de estimação |
+| MATH_REQUEST, RESPONSE, MISSION_REQ/RESP | 2–3 | 2 se com dependência de voo; 3 se diferível |
+| BEST_EFFORT / diagnóstico | 4–5 | Descartável sob pressão |
+
+Filas por núcleo: 16 posições para prioridades 0–1 (nunca descartadas), 32 para 2–3, 8 para 4–5. RPC com REQ_ID preserva prioridade do pedido na resposta.
+
+## 4.5 RJ45-Privada RS (dois segmentos isolados)
+
+| Segmento | Direcção | Prioridade | Regra |
+|---|---|---|---|
+| GCV↔TX 5,8 GHz | Descendente (vídeo 720p30) | Fluxo contínuo isolado | Sem contenda com comando; débito gerido pela placa TX |
+| MG↔RX 2,4 GHz (comando ascendente) | Ascendente | 1 (sobre telemetria) | Comando a 50 Hz prevalece |
+| MG↔TX 868 MHz (telemetria descendente) | Descendente | 2 periódica / 1 evento | Evento preemptivo sobre periódica |
+| Diagnóstico série | Ambas | 4–5 | Só com folga |
+
+É proibida qualquer comparação de prioridade entre segmentos: o isolamento físico torna-a sem sentido.
 
 ---
 
-# 6. Filas de Transmissão
+# 5. Escalonamento dos 8 núcleos do MG
 
-## 6.1 Estrutura de Filas
+O MG possui 4×RP2350 × 2 núcleos = 8 núcleos físicos (N0–N7). Afectação de referência (ajustável pelo Supervisor Cluster):
 
-Cada nó CAN possui um conjunto de filas de transmissão, uma por nível de prioridade:
+| Núcleo(s) | Função preferencial |
+|---|---|
+| N0–N1 (RP2350-0) | Supervisão, TIME_SYNC raiz, FAULT, HMAC/SEQ |
+| N2–N3 (RP2350-1) | Fusão sensorial, SENSOR_DATA, NAVIGATION |
+| N4–N5 (RP2350-2) | Matemática/cálculo, MATH_REQUEST, MISSION |
+| N6–N7 (RP2350-3) | CAN-Principal + Router RF-CMD, HEALTH/SYSTEM_STATUS |
 
-```text
-┌─────────────────────────────────────────────────────────────┐
-│  FILAS DE TRANSMISSÃO (por nó)                              │
-│                                                             │
-│  ┌─────────────────────────────────────┐                    │
-│  │  FILA 0: SUPER_CRITICAL             │  ← Processamento   │
-│  │  [MSG_FAILSAFE][MSG_SAFETY_DATA]    │    imediato        │
-│  └─────────────────────────────────────┘                    │
-│  ┌─────────────────────────────────────┐                    │
-│  │  FILA 1: CRITICAL                   │  ← Sem timeout     │
-│  │  [MSG_COMMAND][MSG_ACK]             │    de espera       │
-│  └─────────────────────────────────────┘                    │
-│  ┌─────────────────────────────────────┐                    │
-│  │  FILA 2: HIGH                       │  ← Processamento   │
-│  │  [MSG_TELEMETRY][MSG_HEARTBEAT]     │    prioritário     │
-│  └─────────────────────────────────────┘                    │
-│  ┌─────────────────────────────────────┐                    │
-│  │  FILA 3: MEDIUM                     │  ← Processamento   │
-│  │  [MSG_VIDEO][MSG_ACK]               │    normal          │
-│  └─────────────────────────────────────┘                    │
-│  ┌─────────────────────────────────────┐                    │
-│  │  FILA 4: LOW                        │  ← Pode atrasar    │
-│  │  [MSG_SHELL_CMD]                    │                    │
-│  └─────────────────────────────────────┘                    │
-│  ┌─────────────────────────────────────┐                    │
-│  │  FILA 5: SUPER_LOW                  │  ← Descartável     │
-│  │  [MSG_DEBUG]                        │                    │
-│  └─────────────────────────────────────┘                    │
-│                                                             │
-│  Transmissão: FILA 0 primeiro → FILA 5 último               │
-└─────────────────────────────────────────────────────────────┘
-```
+Regras:
 
-## 6.2 Regras de Transmissão
+* Cada núcleo possui filas FABRIC próprias (§4.4); o arbiter global serve primeiro prioridade 0 em qualquer núcleo.
+* RPC pode migrar para núcleo gémeo do mesmo RP2350 se o destino estiver saturado (latência majorada em +50%).
+* Núcleos de supervisão (N0–N1) nunca executam cálculo diferível; núcleos de cálculo nunca geram TIME_SYNC.
+* Em falha de 1×RP2350, os 6 núcleos restantes assumem as cargas 0–1 e degradam 3–5 (COM-006).
 
-| Regra            | Descrição                                           |
-|------------------|-----------------------------------------------------|
-| Preempção        | FILA 0 preempção todas as outras                    |
-| Round-robin      | Filas 2-5 usam round-robin para prevenir starvation |
-| FIFO intra-fila  | Mensagens dentro da mesma fila são FIFO             |
-| Máximo por ciclo | Máximo de N mensagens de cada fila por ciclo        |
-
-## 6.3 Capacidade das Filas
-
-| Parâmetro       | Valor | Descrição                   |
-|-----------------|-------|-----------------------------|
-| `QUEUE_SIZE_SC` | 8     | Tamanho fila SUPER_CRITICAL |
-| `QUEUE_SIZE_CR` | 16    | Tamanho fila CRITICAL       |
-| `QUEUE_SIZE_HI` | 32    | Tamanho fila HIGH           |
-| `QUEUE_SIZE_ME` | 32    | Tamanho fila MEDIUM         |
-| `QUEUE_SIZE_LO` | 16    | Tamanho fila LOW            |
-| `QUEUE_SIZE_SL` | 8     | Tamanho fila SUPER_LOW      |
+Exemplo numérico: com 8 núcleos a 150 MHz e quadros FABRIC típicos de 32–64 B, o objectivo é RPC local <200 µs e difusão TIME_SYNC a 10 Hz sem jitter superior a 50 µs (valores a confirmar em bancada; majorantes normativos em COM-006).
 
 ---
 
-# 7. Filas de Receção
+# 6. Descarte e anti-inanição
 
-## 7.1 Estrutura
+| Prioridade | Critério | Acção |
+|---|---|---|
+| 0–1 (CAN) / 0–1 (FABRIC) | Nunca | Permanece até entrega; pressão gera FAULT, não descarte |
+| 2 | Fila cheia | Elimina mais antigo; contador `discarded_hi++` |
+| 3–4 | Fila cheia | Elimina mais antigo; contadores respectivos |
+| 5 | Cheia ou pressão superior | Eliminação imediata |
 
-As filas de receção espelham a estrutura de transmissão:
-
-```text
-┌─────────────────────────────────────────────────────────────┐
-│  FILAS DE RECEÇÃO (por nó)                                  │
-│                                                             │
-│  ┌─────────────────────────────────────┐                    │
-│  │  FILA RX 0: SUPER_CRITICAL          │  → Processamento   │
-│  │  [MSG_FAILSAFE][MSG_SAFETY_DATA]    │    imediato        │
-│  └─────────────────────────────────────┘                    │
-│  ┌─────────────────────────────────────┐                    │
-│  │  FILA RX 1: CRITICAL                │  → Sem timeout     │
-│  │  [MSG_COMMAND][MSG_ACK]             │    de espera       │
-│  └─────────────────────────────────────┘                    │
-│  ┌─────────────────────────────────────┐                    │
-│  │  FILA RX 2: HIGH                    │  → Processamento   │
-│  │  [MSG_TELEMETRY][MSG_HEARTBEAT]     │    prioritário     │
-│  └─────────────────────────────────────┘                    │
-│  ┌─────────────────────────────────────┐                    │
-│  │  FILA RX 3: MEDIUM                  │  → Processamento   │
-│  │  [MSG_VIDEO][MSG_SYNC]              │    normal          │
-│  └─────────────────────────────────────┘                    │
-│  ┌─────────────────────────────────────┐                    │
-│  │  FILA RX 4: LOW                     │  → Pode atrasar    │
-│  │  [MSG_SHELL_CMD]                    │                    │
-│  └─────────────────────────────────────┘                    │
-│  ┌─────────────────────────────────────┐                    │
-│  │  FILA RX 5: SUPER_LOW               │  → Descartável     │
-│  │  [MSG_DEBUG]                        │                    │
-│  └─────────────────────────────────────┘                    │
-│                                                             │
-│  Processamento: RX 0 primeiro → RX 5 último                 │
-└─────────────────────────────────────────────────────────────┘
-```
-
-## 7.2 Regras de Processamento
-
-| Prioridade     | Política de processamento                           |
-|----------------|-----------------------------------------------------|
-| SUPER_CRITICAL | Processamento imediato, interrompe ciclo atual      |
-| CRITICAL       | Processamento no próximo ciclo, sem atraso          |
-| HIGH           | Processamento antes de MEDIUM e LOW                 |
-| MEDIUM         | Processamento no ciclo normal                       |
-| LOW            | Processamento quando houver espaço                  |
-| SUPER_LOW      | Processamento apenas se não houver outros pendentes |
+Invariantes: `discarded_sc == 0` e `discarded_cr == 0` nas CAN; qualquer violação gera alerta de segurança. Anti-inanição: contadores por fila; LOW garantido a cada 100 ciclos, SUPER_LOW a cada 200 (impulsionado temporariamente a HIGH).
 
 ---
 
-# 8. Regras de Descarte
+# 7. Prioridade dinâmica por estado
 
-## 8.1 Critérios de Descarte
+| MSG_ID / TIPO | NORMAL | FAILSAFE | DEGRADADO (1×RP2350 perdido) |
+|---|---|---|---|
+| MSG_DEBUG | 5 | 0 | 2 |
+| MSG_TELEMETRY / SENSOR_DATA | 2 | 2 | 2 (fusão reduzida) |
+| MSG_VIDEO_DESC | 3 | 4 | 4 |
+| MSG_SHELL_CMD | 4 | 5 | 5 |
+| MATH diferível | 3 | 4 | 5 (suspenso se necessário) |
+| MSG_FAILSAFE / FAULT | 0 | 0 | 0 |
 
-As regras de descarte variam conforme a prioridade da mensagem:
-
-| Prioridade     | Critério de descarte     | Ação                                                      |
-|----------------|--------------------------|-----------------------------------------------------------|
-| SUPER_CRITICAL | **Nunca descartado**     | Mensagem permanece na fila até ser processada             |
-| CRITICAL       | **Nunca descartado**     | Mensagem permanece na fila até ser processada             |
-| HIGH           | Fila cheia               | Descarte da mensagem mais antiga da fila HIGH             |
-| MEDIUM         | Fila cheia               | Descarte da mensagem mais antiga da fila MEDIUM           |
-| LOW            | Fila cheia               | Descarte da mensagem mais antiga da fila LOW              |
-| SUPER_LOW      | Fila cheia **ou** sempre | Descarte imediato se fila cheia ou se SUPER_HIGH pendente |
-
-## 8.2 Diagrama de Decisão de Descarte
-
-```text
-Mensagem recebida para FILA de prioridade P
-        │
-        ▼
-┌───────────────┐
-│ P = SUPER_    │──sim──→ NUNCA descartar
-│ CRITICAL?     │         Adicionar à fila
-└───────┬───────┘
-        │não
-        ▼
-┌───────────────┐
-│ P = CRITICAL? │──sim──→ NUNCA descartar
-│               │         Adicionar à fila
-└───────┬───────┘
-        │não
-        ▼
-┌───────────────┐
-│ Fila está     │──sim──→ Descartar mensagem mais antiga
-│ cheia?        │         Adicionar nova mensagem
-└───────┬───────┘
-        │não
-        ▼
-┌───────────────┐
-│ P = SUPER_    │──sim──→ Verificar se há mensagens
-│ LOW?          │         SUPER_HIGH pendentes
-└───────┬───────┘
-        │não
-        ▼
-Adicionar à fila normalmente
-```
-
-## 8.3 Contadores de Descarte
-
-Cada nó mantém contadores independentes:
-
-| Contador       | Descrição                                            |
-|----------------|------------------------------------------------------|
-| `discarded_sc` | Mensagens SUPER_CRITICAL descartadas (deveria ser 0) |
-| `discarded_cr` | Mensagens CRITICAL descartadas (deveria ser 0)       |
-| `discarded_hi` | Mensagens HIGH descartadas                           |
-| `discarded_me` | Mensagens MEDIUM descartadas                         |
-| `discarded_lo` | Mensagens LOW descartadas                            |
-| `discarded_sl` | Mensagens SUPER_LOW descartadas                      |
-
-**Invariantes de segurança:**
-* `discarded_sc` deve ser sempre 0;
-* `discarded_cr` deve ser sempre 0;
-* Qualquer valor não-zero em `discarded_sc` ou `discarded_cr` gera alerta de segurança.
+A alteração é atómica, ordenada pelo Supervisor Cluster e aplicada em todos os gestores no mesmo ciclo TIME_SYNC.
 
 ---
 
-# 9. Prevenção de Starvation
+# 8. Exemplo integral
 
-## 9.1 Problema
-
-Mensagens de baixa prioridade (LOW, SUPER_LOW) poderiam nunca ser processadas se houver sempre mensagens de prioridade superior pendentes.
-
-## 9.2 Mecanismo de Prevenção
-
-```text
-┌─────────────────────────────────────────────────────────────┐
-│  MECANISMO DE PREVENÇÃO DE STARVATION                       │
-│                                                             │
-│  Contador por fila: starvation_counter[P]                   │
-│                                                             │
-│  Regra: se starvation_counter[P] > THRESHOLD,               │
-│         fila P ganha prioridade temporária de HIGH          │
-│                                                             │
-│  THRESHOLD por prioridade:                                  │
-│    LOW:      100 ciclos sem processamento                   │
-│    SUPER_LOW: 200 ciclos sem processamento                  │
-│                                                             │
-│  Após processamento: starvation_counter[P] = 0              │
-│                                                             │
-│  Resultado: LOW é garantido ser processado a cada           │
-│             100 ciclos no máximo; SUPER_LOW a cada 200      │
-└─────────────────────────────────────────────────────────────┘
 ```
-
-## 9.3 Parâmetros de Starvation
-
-| Parâmetro                 | Prioridade | Valor | Descrição                                         |
-|---------------------------|------------|-------|---------------------------------------------------|
-| `STARVATION_THRESHOLD_LO` | LOW        | 100   | Máximo de ciclos sem processamento                |
-| `STARVATION_THRESHOLD_SL` | SUPER_LOW  | 200   | Máximo de ciclos sem processamento                |
-| `STARVATION_BOOST`        | Variável   | HIGH  | Prioridade temporária quando starvation detectado |
-
----
-
-# 10. Prioridade Dinâmica por Estado do Sistema
-
-## 10.1 Tabela de Contexto
-
-A prioridade de alguns MSG_ID pode mudar conforme o estado do sistema:
-
-| MSG_ID        | Estado NORMAL      | Estado Failsafe    | Estado DEGRADADO   |
-|---------------|--------------------|--------------------|--------------------|
-| MSG_DEBUG     | SUPER_LOW (5)      | SUPER_CRITICAL (0) | HIGH (2)           |
-| MSG_TELEMETRY | HIGH (2)           | HIGH (2)           | MEDIUM (3)         |
-| MSG_VIDEO     | MEDIUM (3)         | LOW (4)            | LOW (4)            |
-| MSG_SHELL_CMD | LOW (4)            | SUPER_LOW (5)      | SUPER_LOW (5)      |
-| MSG_CONFIG    | MEDIUM (3)         | LOW (4)            | LOW (4)            |
-| MSG_FAILSAFE  | SUPER_CRITICAL (0) | SUPER_CRITICAL (0) | SUPER_CRITICAL (0) |
-
-## 10.2 Mecanismo de Alteração
-
-```text
-Evento de mudança de estado do sistema
-        │
-        ▼
-┌───────────────┐
-│ State Manager │
-│ notifica      │
-│ mudança       │
-└───────┬───────┘
-        │
-        ▼
-┌───────────────┐
-│ Gestor de     │
-│ Mensagens     │
-│ atualiza      │
-│ tabela de     │
-│ prioridades   │
-└───────────────┘
-```
-
-A alteração é atómica e afeta todas as mensagens recebidas/ transmitidas a partir desse momento.
-
----
-
-# 11. Escalonamento de Transmissão
-
-## 11.1 Algoritmo
-
-```text
-┌──────────────────────────────────────────────────────────────┐
-│  ALGORITMO DE ESCALONAMENTO DE TRANSMISSÃO                   │
-│                                                              │
-│  1. Verificar FILA 0 (SUPER_CRITICAL)                        │
-│     └─→ Se não vazia: transmitir IMEDIATAMENTE               │
-│                                                              │
-│  2. Verificar FILA 1 (CRITICAL)                              │
-│     └─→ Se não vazia: transmitir ANTES de outras             │
-│                                                              │
-│  3. Para FILAS 2-5 (HIGH → SUPER_LOW):                       │
-│     └─→ Aplicar round-robin com starvation boost             │
-│                                                              │
-│  4. Em cada ciclo de transmissão:                            │
-│     └─→ Máximo MAX_PER_CYCLE mensagens por fila              │
-│                                                              │
-│  5. Registra último ciclo de processamento por fila          │
-│     └─→ Para cálculo de starvation                           │
-└──────────────────────────────────────────────────────────────┘
-```
-
-## 11.2 Limites por Ciclo
-
-| Fila   | Máximo por ciclo | Descrição                         |
-|--------|------------------|-----------------------------------|
-| FILA 0 | Ilimitado        | SUPER_CRITICAL sempre transmitido |
-| FILA 1 | 4                | CRITICAL: máximo 4 por ciclo      |
-| FILA 2 | 8                | HIGH: máximo 8 por ciclo          |
-| FILA 3 | 4                | MEDIUM: máximo 4 por ciclo        |
-| FILA 4 | 2                | LOW: máximo 2 por ciclo           |
-| FILA 5 | 1                | SUPER_LOW: máximo 1 por ciclo     |
-
----
-
-# 12. Exemplo: Fluxo Completo
-
-```text
-┌──────────────────────────────────────────────────────────────┐
-│  EXEMPLO: RECEÇÃO E PROCESSAMENTO                            │
-│                                                              │
-│  1. Frame CAN FD recebido                                    │
-│     CAN ID: Prioridade=2, Origem=0x12(ESP32-S),              │
-│             Destino=0x01(RaspberryPi), Tipo=0x02             │
-│                                                              │
-│  2. Decodificação do CAN ID                                  │
-│     → Prioridade CAN = HIGH (2)                              │
-│                                                              │
-│  3. Parser TLV                                               │
-│     → MSG_ID = 0x11 (MSG_TELEMETRY)                          │
-│     → Prioridade TLV = HIGH (2)                              │
-│                                                              │
-│  4. Prioridade efetiva = MAX(CAN, TLV) = HIGH (2)            │
-│                                                              │
-│  5. Enfileiramento na FILA RX 2 (HIGH)                       │
-│                                                              │
-│  6. Processamento (quando chegar a vez)                      │
-│     → Handler de MSG_TELEMETRY invocado                      │
-│     → Dados processados pelo módulo de aplicação             │
-│                                                              │
-│  7. Resposta (se necessário)                                 │
-│     → MSG_ACK com prioridade CRITICAL (1)                    │
-│     → Enfileirado na FILA TX 1                               │
-│     → Transmissão no próximo ciclo                           │
-└──────────────────────────────────────────────────────────────┘
+CAN-Principal: comando G-CTV→G-ACT (1) vs telemetria G-SEN→MG (2) vs descritor GCV (3)
+ → transmite comando; telemetria aguarda; descritor envelhece.
+FABRIC: FAULT (0) preempta MATH_REQUEST (3) no N4; resposta RPC herda prioridade 0.
+RJ45: evento de emergência (1) preempta telemetria periódica (2) no 868 MHz; vídeo 720p30 prossegue isolado.
 ```
 
 ---
 
-# 13. Configuração
+# 9. Nota histórica de migração
 
-## 13.1 Parâmetros Estáticos
-
-Todos os parâmetros são configuráveis em tempo de compilação:
-
-```cpp
-// Prioridades
-static const uint8_t PRIORITY_MSG_FAILSAFE = 0;  // SUPER_CRITICAL
-static const uint8_t PRIORITY_MSG_COMMAND  = 1;  // CRITICAL
-static const uint8_t PRIORITY_MSG_TELEMETRY= 2;  // HIGH
-static const uint8_t PRIORITY_MSG_DEBUG    = 5;  // SUPER_LOW (normal)
-static const uint8_t PRIORITY_MSG_DEBUG_FS = 0;  // SUPER_LOW (failsafe)
-
-// Filas
-static const uint8_t QUEUE_SIZE[] = {8, 16, 32, 32, 16, 8};
-
-// Starvation
-static const uint16_t STARVATION_THRESHOLD[] = {0, 0, 0, 0, 100, 200};
-
-// Limites por ciclo
-static const uint8_t MAX_PER_CYCLE[] = {0xFF, 4, 8, 4, 2, 1};
-```
-
-## 13.2 Validação em Tempo de Compilação
-
-```cpp
-static_assert(QUEUE_SIZE[0] > 0, "Fila SUPER_CRITICAL deve ter espaço");
-static_assert(QUEUE_SIZE[1] > 0, "Fila CRITICAL deve ter espaço");
-static_assert(STARVATION_THRESHOLD[4] > 0, "Starvation threshold LOW deve ser > 0");
-static_assert(STARVATION_THRESHOLD[5] > 0, "Starvation threshold SL deve ser > 0");
-```
+> Políticas anteriores indexadas a ESP32/Raspberry Pi/FS_A encontram-se revogadas. As capacidades e prioridades acima aplicam-se aos Grupos Computacionais do COM-001 §3 e aos 8 núcleos do MG.
 
 ---
 
-# 14. Limites do Documento
+# 10. Referências
 
-Este documento não define:
-
-* implementação específica do Gestor de Mensagens (ver `COM-003`);
-* topologia completa de comunicação (ver `COM-007`);
-* timeouts e mecanismos de recuperação (ver `COM-006`);
-* mecanismos de integridade (ver `COM-010`);
-* parâmetros elétricos do CAN (ver `COM-008`).
-
----
-
-# 15. Referências
-
-- COM-001 — Arquitetura de Comunicação
-- COM-002 — Protocolo TLV
-- COM-003 — Gestor de Mensagens
-- COM-005 — Eventos
-- COM-006 — Timeouts e Recuperação
-- COM-007 — Comunicação entre Domínios Computacionais
-- COM-008 — CAN Bus
-- COM-010 — Integridade
-- SHARED-TLV — Definições do Protocolo TLV
-- SHARED-CAN-IDS — Alocação de CAN IDs
-- SYS-003 — Arquitetura de Software
-- SYS-006 — Gestão de Estados
-- SYS-008 — Gestão Temporal
+* COM-001, COM-002 (+Anexos), COM-003, COM-005, COM-006, COM-007, COM-008, COM-010
